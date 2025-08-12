@@ -19,7 +19,7 @@ body{
   overscroll-behavior: contain;
 }
 
-/* App frame fills real mobile viewport (handles collapsing browser chrome) */
+/* App frame fills real mobile viewport */
 .app{
   width:min(980px,100%);
   height:100dvh;
@@ -110,7 +110,7 @@ body{
   border-top:1px solid var(--outline);
   transform: translateY(110%);  /* hidden by default */
   transition: transform .22s ease;
-  z-index:9999;                   /* above video & overlays */
+  z-index:9999;                  /* make sure it's above all overlays */
 }
 .sheet.show{ transform: translateY(0) } /* show when JS adds .show */
 .sheet .row{ display:flex; gap:10px; align-items:center; justify-content:space-between }
@@ -128,6 +128,25 @@ body{
   font-weight:700; opacity:0; transition:opacity .18s ease; z-index:6;
 }
 .toast.show{ opacity:1 }
+
+/* Floating success tick */
+.saved-tick{
+  position:fixed; top:50%; left:50%;
+  transform:translate(-50%,-50%) scale(0.9);
+  font-size:4rem; line-height:1;
+  color:#00cc88;
+  background:rgba(0,0,0,.35);
+  padding:18px; border-radius:50%;
+  z-index:10000;
+  opacity:0; pointer-events:none;
+  transition:opacity .15s ease, transform .2s ease;
+}
+.saved-tick.show{
+  opacity:1; transform:translate(-50%,-50%) scale(1.08);
+}
+@media (max-width:480px){
+  .saved-tick{ font-size:3.2rem; padding:14px }
+}
 
 /* Splash screen overlay */
 #splash{
@@ -147,24 +166,3 @@ body{
 @media (max-width:420px){
   .corn{ width:28px; height:28px; border-width:2px }
 }
-
-.saved-tick {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 4rem;
-  color: #4CAF50; /* green tick */
-  background-color: rgba(0, 0, 0, 0.4);
-  padding: 20px;
-  border-radius: 50%;
-  z-index: 9999;
-  animation: fadeOut 1s ease-out forwards;
-}
-
-@keyframes fadeOut {
-  0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-  70% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
-  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
-}
-
