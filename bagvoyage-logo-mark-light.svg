@@ -1,0 +1,6 @@
+<!-- bagvoyage-logo-mark-light.svg -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 24 24">
+  <rect x="4.8" y="6.8" width="14.4" height="12.4" rx="2.4" ry="2.4" fill="none" stroke="#ffffff" stroke-width="1.8" opacity="0.95"></rect>
+  <path d="M9 6.8V5.2A2.2 2.2 0 0 1 11.2 3h1.6A2.2 2.2 0 0 1 15 5.2v1.6" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" opacity="0.95"></path>
+  <path d="M7.6 13.1l2.6 2.6L16.8 9.2" fill="none" stroke="#00cc88" stroke-width="2.0" stroke-linecap="round" stroke-linejoin="round"></path>
+</svg>
