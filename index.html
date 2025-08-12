@@ -39,19 +39,23 @@
     // Split-label assembly (combine two Code128 halves within 1s)
     const FRAG_WINDOW_MS = 1000;
     let fragBuffer = []; // {digits, ts}
-    function addFragment(d){ const now=Date.now(); fragBuffer.push({digits:d, ts:now});
-      fragBuffer = fragBuffer.filter((f,i,a)=> now-f.ts<=FRAG_WINDOW_MS && (i===0 || f.digits!==a[i-1].digits)); }
+    function addFragment(d){ 
+      const now=Date.now(); 
+      fragBuffer.push({digits:d, ts:now});
+      // Cap buffer at 10 items to prevent memory issues
+      fragBuffer = fragBuffer.slice(-10).filter((f,i,a)=> now-f.ts<=FRAG_WINDOW_MS && (i===0 || f.digits!==a[i-1].digits)); 
+    }
     function tryAssemble(){
       if (fragBuffer.length < 2) return '';
-      const a = fragBuffer[fragBuffer.length-2].digits;
-      const b = fragBuffer[fragBuffer.length-1].digits;
-      if (!a || !b || a===b) return '';
+      // Sort by timestamp to prioritize recent fragments
+      const sorted = fragBuffer.slice().sort((a, b) => b.ts - a.ts);
+      const [b, a] = sorted.slice(0, 2).map(f => f.digits);
+      if (!a || !b || a === b) return '';
       const ab=a+b, ba=b+a;
-      if (ab.length===10 || ab.length===13) return ab;
-      if (ba.length===10 || ba.length===13) return ba;
-      if (a.length===10 || a.length===13) return a;
-      if (b.length===10 || b.length===13) return b;
-      return '';
+      return (ab.length===10 || ab.length===13) ? ab :
+             (ba.length===10 || ba.length===13) ? ba :
+             (a.length===10 || a.length===13) ? a :
+             (b.length===10 || b.length===13) ? b : '';
     }
   </script>
 </head>
@@ -72,6 +76,7 @@
       <div class="brand">
         <!-- Simple suitcase + check -->
         <svg viewBox="0 0 24 24" aria-hidden="true">
+          <title>Suitcase with checkmark</title>
           <rect x="5" y="7" width="14" height="12" rx="2" ry="2" fill="none" stroke="#1aa3ff" stroke-width="2"/>
           <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" fill="none" stroke="#1aa3ff" stroke-width="2"/>
           <path d="M8 13l2.2 2.2L16 9.5" fill="none" stroke="#00cc88" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -99,12 +104,12 @@
         <button id="btnTorch" class="btn ghost" title="Toggle torch">Torch</button>
         <button id="btnStop" class="btn ghost" title="Exit scanning">Exit</button>
       </div>
-      <video id="preview" muted playsinline></video>
+      <video id="preview" muted playsinline aria-label="Camera feed for barcode scanning"></video>
       <div class="frame">
         <div class="corn tl"></div><div class="corn tr"></div><div class="corn bl"></div><div class="corn br"></div>
         <div class="line"></div>
       </div>
-      <div id="sheet" class="sheet" aria-atomic="true">
+      <div id="sheet" class="sheet" aria-atomic="true" role="alert">
         <div class="row">
           <span id="pill" class="pill">STATE</span>
           <button id="btnContinue" class="btn primary hidden">Continue</button>
@@ -118,10 +123,12 @@
   </div>
 
   <!-- Manual entry -->
-  <dialog id="manualDialog">
+  <dialog id="manualDialog" aria-labelledby="manualTitle">
     <form method="dialog">
-      <div style="font-weight:800;margin-bottom:8px">Manual entry</div>
-      <input id="manualInput" type="text" placeholder="Enter code"/>
+      <div id="manualTitle" style="font-weight:800;margin-bottom:8px">Manual entry</div>
+      <label for="manualInput" class="sr-only">Enter baggage code</label>
+      <input id="manualInput" type="text" placeholder="Enter code" aria-describedby="manualDesc"/>
+      <div id="manualDesc" class="sr-only">Enter a 10 or 13-digit baggage code.</div>
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
         <button class="btn ghost" value="cancel">Cancel</button>
         <button id="manualApply" class="btn primary" value="ok">Apply</button>
@@ -144,11 +151,21 @@
       let lastRead = { code:null, ts:0 };
       let scanRaf = null;
       let scanCooldownUntil = 0;
+      let isTorchOn = false;
 
       // Local DB
       const DBKEY = 'bagvoyage_tags';
       const getAll = () => { try{return JSON.parse(localStorage.getItem(DBKEY)||'[]')}catch{return[]} };
-      const saveTag = code => { const a=getAll(); a.unshift({code,ts:Date.now()}); localStorage.setItem(DBKEY, JSON.stringify(a)); };
+      const saveTag = code => { 
+        if (!normalizeBaggageCode(code)) return; // Validate format
+        const a = getAll();
+        if (a.length > 100) a.pop(); // Cap at 100 entries
+        a.unshift({code,ts:Date.now()}); 
+        try { localStorage.setItem(DBKEY, JSON.stringify(a)); } catch (e) {
+          console.error('Storage failed:', e);
+          toast('Failed to save tag', 1000);
+        }
+      };
       const exists  = code => getAll().some(x=>x.code===code);
 
       // DOM
@@ -180,10 +197,13 @@
         $pill.textContent = kind==='ok' ? 'MATCH' : 'UNMATCHED';
         $sheetTitle.textContent = title; $sheetCode.textContent = code;
         $btnContinue.classList.toggle('hidden', !wait);
-        $sheet.classList.add('show'); if (!wait) setTimeout(()=> $sheet.classList.remove('show'), 900);
+        $btnContinue.setAttribute('tabindex', wait ? '0' : '-1'); // Remove from focus when hidden
+        $sheet.classList.add('show'); 
+        if (!wait) setTimeout(()=> $sheet.classList.remove('show'), 900);
+        if (wait) $btnContinue.focus(); // Auto-focus continue button
       }
-      function showHome(){ $scan.classList.add('hidden'); $home.classList.remove('hidden'); mode=null; setCamStatus(false); }
-      function showScan(m){ mode=m; $title.textContent = m==='tag'?'Tag — scanning':'Retrieve — scan to verify'; $home.classList.add('hidden'); $scan.classList.remove('hidden'); }
+      function showHome(){ $scan.classList.add('hidden'); $home.classList.remove('hidden'); mode=null; setCamStatus(false); $scan.classList.remove('active'); }
+      function showScan(m){ mode=m; $title.textContent = m==='tag'?'Tag — scanning':'Retrieve — scan to verify'; $home.classList.add('hidden'); $scan.classList.remove('hidden'); $scan.classList.add('active'); }
       function setCamStatus(active){ if(active){ $camDot.className='dot ok'; $camLabel.textContent='Camera: active'; } else { $camDot.className='dot'; $camLabel.textContent='Camera: idle'; } }
 
       function showSavedTick(ms = 900){
@@ -195,13 +215,15 @@
       async function setTorch(on){
         if (!currentTrack) return;
         try{
-          const caps = currentTrack.getCapabilities && currentTrack.getCapabilities();
-          if (caps && 'torch' in caps) {
+          const caps = currentTrack.getCapabilities?.();
+          if (caps?.torch) {
             await currentTrack.applyConstraints({ advanced: [{ torch: !!on }] });
+            isTorchOn = on;
+            document.getElementById('btnTorch').textContent = isTorchOn ? 'Torch Off' : 'Torch On';
           } else {
-            // iOS typically doesn't support torch; ignore.
+            toast('Torch not supported', 1000);
           }
-        }catch(e){ /* ignore */ }
+        }catch(e){ toast('Torch control failed', 1000); }
       }
 
       async function startScan(m){
@@ -218,8 +240,8 @@
           const constraints = {
             video: {
               facingMode:{ ideal:'environment' },
-              width:{ ideal:1920 }, height:{ ideal:1080 },
-              frameRate:{ ideal:30 }
+              width:{ ideal:1280, min:640 }, height:{ ideal:720, min:360 },
+              frameRate:{ ideal:30, min:15 }
             },
             audio: false
           };
@@ -281,9 +303,8 @@
 
         }catch(e){
           console.error('[Bagvoyage] startScan error:', e);
-          alert('Camera access failed: ' + e.message);
-          setCamStatus(false);
-          isScanning = false;
+          toast('Camera access failed: ' + e.message, 1500);
+          stopScan();
           showHome();
         }
 
@@ -329,6 +350,7 @@
           try{ window.__bagvoyage_reader__?.reset?.(); }catch{}
           if (currentTrack) { try{ currentTrack.stop(); }catch{} currentTrack = null; }
           setCamStatus(false);
+          $scan.classList.remove('active');
         });
       }
 
@@ -352,16 +374,7 @@
 
       // Torch toggle
       document.getElementById('btnTorch').addEventListener('click', async ()=>{
-        if(!currentTrack) return;
-        try{
-          const caps = currentTrack.getCapabilities && currentTrack.getCapabilities();
-          if(caps && 'torch' in caps){
-            const next = !currentTrack.getSettings().torch;
-            await currentTrack.applyConstraints({ advanced:[{ torch: next }] });
-          }else{
-            toast('Torch not supported', 1000);
-          }
-        }catch{ toast('Torch control failed', 1000); }
+        setTorch(!isTorchOn);
       });
 
       // Continue & Exit
@@ -376,6 +389,7 @@
       window.addEventListener('pagehide', () => { setTorch(false).finally(stopScan); });
       document.addEventListener('visibilitychange', () => {
         if (document.hidden) { setTorch(false).finally(stopScan); }
+        else if (mode) { startScan(mode); }
       });
 
       // Home buttons
