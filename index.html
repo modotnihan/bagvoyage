@@ -227,51 +227,81 @@
       function setCamStatus(active){ if(active){ $camDot.className='dot ok'; $camLabel.textContent='Camera: active'; } else { $camDot.className='dot'; $camLabel.textContent='Camera: idle'; } }
 
       async function startScan(m){
-        if(isScanning) return;
-        showScan(m); isScanning = true; setCamStatus(true);
+  if (isScanning) return;
+  showScan(m);
+  isScanning = true;
+  setCamStatus(true);
 
-        try{
-          if (!window.ZXingBrowser?.BrowserMultiFormatReader) throw new Error('ZXing library not loaded');
-          const reader = new ZXingBrowser.BrowserMultiFormatContinuousReader();
+  try{
+    // Choose the best available ZXing reader
+    const ZXB = window.ZXingBrowser || {};
+    const ReaderClass =
+      ZXB.BrowserMultiFormatContinuousReader || // preferred (if present)
+      ZXB.BrowserMultiFormatReader;             // fallback (always present in most builds)
 
-          if (currentTrack) { try{ currentTrack.stop(); }catch{} currentTrack = null; }
+    if (!ReaderClass) throw new Error('ZXing library not loaded');
+    const reader = new ReaderClass();
 
-          // Hints: baggage formats first, allow common 2D
-          let hints;
-          const BF = ZXingBrowser.BarcodeFormat, HT = ZXingBrowser.DecodeHintType;
-          if (BF && HT) {
-            const formats = [ BF.ITF, BF.CODE_128, BF.CODE_39, BF.EAN_13, BF.EAN_8, BF.UPC_A, BF.QR_CODE, BF.DATA_MATRIX, BF.PDF_417 ].filter(Boolean);
-            hints = new Map(); hints.set(HT.TRY_HARDER, true); hints.set(HT.POSSIBLE_FORMATS, formats);
-          }
-          const constraints = { video: { facingMode:{ ideal:'environment' }, width:{ ideal:1920 }, height:{ ideal:1080 } } };
+    // stop old camera track if any
+    if (currentTrack) { try { currentTrack.stop(); } catch(_) {} currentTrack = null; }
 
-          await reader.decodeFromConstraints(constraints, $video, (result, err) => {
-            if(!isScanning) return;
-            if (result) {
-              const raw = result.getText();
-              const digits = extractDigits(raw);
-              if (!digits) return;
+    // Hints: prioritize baggage formats + common 2D
+    let hints;
+    const BF = ZXB.BarcodeFormat, HT = ZXB.DecodeHintType;
+    if (BF && HT) {
+      const formats = [
+        BF.ITF, BF.CODE_128, BF.CODE_39, BF.EAN_13, BF.EAN_8, BF.UPC_A, // 1D
+        BF.QR_CODE, BF.DATA_MATRIX, BF.PDF_417                         // 2D allowed
+      ].filter(Boolean);
+      hints = new Map();
+      hints.set(HT.TRY_HARDER, true);
+      hints.set(HT.POSSIBLE_FORMATS, formats);
+    }
 
-              addFragment(digits);
-              const assembled = tryAssemble();
-              const payload = assembled || (digits.length >= 10 ? digits : '');
-              if (!payload) return;
+    // Higher resolution helps 1D bars
+    const constraints = {
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    };
 
-              fragBuffer = []; // consume success
-              onScan(payload);
-            }
-          }, hints);
+    await reader.decodeFromConstraints(constraints, $video, (result, err) => {
+      if (!isScanning) return;
+      if (result) {
+        // Every successful decode hits this callback
+        const raw = result.getText();
+        const digits = extractDigits(raw);
+        if (!digits) return;
 
-          const stream = $video.srcObject;
-          currentTrack = stream?.getVideoTracks?.[0] || null;
-          window.__bagvoyage_reader__ = reader;
+        // Buffer fragments and try to assemble 10/13-digit baggage number
+        addFragment(digits);
+        const assembled = tryAssemble();
 
-        }catch(e){
-          console.error('[Bagvoyage] startScan error:', e);
-          alert('Camera access failed: ' + e.message);
-          setCamStatus(false); isScanning = false; showHome();
-        }
+        // If single-code label yields >=10 digits, accept it directly
+        const payload = assembled || (digits.length >= 10 ? digits : '');
+        if (!payload) return;
+
+        // Prevent double-firing on same pair
+        fragBuffer = [];
+        onScan(payload);
       }
+    }, hints);
+
+    // Cache track for torch control
+    const stream = $video.srcObject;
+    currentTrack = stream?.getVideoTracks?.[0] || null;
+
+    // Let stopScan() reset the reader if available
+    window.__bagvoyage_reader__ = reader;
+
+  }catch(e){
+    console.error('[Bagvoyage] startScan error:', e);
+    alert('Camera access failed: ' + e.message);
+    setCamStatus(false);
+    isScanning = false;
+    showHome();
+  }
+}
+
 
       function stopScan(){
         if(!isScanning) return;
