@@ -97,6 +97,17 @@
   </style>
 </head>
 <script>
+
+  // Basic normalization for baggage tags (keeps numeric payloads common in IATA tags)
+function normalizeBaggageCode(s){
+  if(!s) return '';
+  const digits = (s.match(/\d+/g) || []).join('');
+  // Typical: 10-digit license plate, sometimes 13 with airline prefix
+  if (digits.length === 10 || digits.length === 13) return digits;
+  // Otherwise allow plausible ranges during testing
+  return (digits.length >= 8 && digits.length <= 20) ? digits : '';
+}
+
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.js')
       .then(() => console.log('Service Worker Registered'));
