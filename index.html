@@ -261,36 +261,34 @@ function normalizeBaggageCode(s){
       function showHome(){ $scan.classList.add('hidden'); $home.classList.remove('hidden'); mode=null; setCamStatus(false); }
       function showScan(m){ mode=m; $title.textContent = m==='tag'?'Tag — scanning':'Retrieve — scan to verify'; $home.classList.add('hidden'); $scan.classList.remove('hidden'); }
 
-     async function startScan(m){
+async function startScan(m){
   if(isScanning) return;
   showScan(m);
   isScanning = true;
   setCamStatus(true);
 
   try{
-    // Safely resolve ZXing namespace/enums across versions
-    const ZXB = (window.ZXingBrowser) || {};
-    const BrowserMultiFormatReader = ZXB.BrowserMultiFormatReader;
-    const BarcodeFormat = ZXB.BarcodeFormat || (ZXB.ZXing && ZXB.ZXing.BarcodeFormat);
-    const DecodeHintType = ZXB.DecodeHintType || (ZXB.ZXing && ZXB.ZXing.DecodeHintType);
+    // Make sure ZXing is really there
+    const ZXB = window.ZXingBrowser || {};
+    if (!ZXB.BrowserMultiFormatReader) {
+      throw new Error('ZXing library not loaded yet');
+    }
+    const reader = new ZXB.BrowserMultiFormatReader();
 
-    // Build hints only if enums exist (prevents "TRY_HARDER" crash)
+    // Build hints only if enums exist (prevents TRY_HARDER crash)
     let hints;
-    if (DecodeHintType && BarcodeFormat) {
-      hints = new Map();
-      hints.set(DecodeHintType.TRY_HARDER, true);
-      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-        BarcodeFormat.ITF,          // Interleaved 2 of 5 (IATA)
-        BarcodeFormat.CODE_128,
-        BarcodeFormat.PDF_417,
-        BarcodeFormat.DATA_MATRIX,
-        BarcodeFormat.QR_CODE,
-        BarcodeFormat.CODE_39,
-        BarcodeFormat.EAN_13,
-        BarcodeFormat.EAN_8,
-        BarcodeFormat.UPC_A,
-        BarcodeFormat.AZTEC
-      ].filter(Boolean)); // filter in case any enum is missing
+    try {
+      const BarcodeFormat = ZXB.BarcodeFormat || (ZXB.ZXing && ZXB.ZXing.BarcodeFormat);
+      const DecodeHintType = ZXB.DecodeHintType || (ZXB.ZXing && ZXB.ZXing.DecodeHintType);
+      if (BarcodeFormat && DecodeHintType) {
+        const formats = ['ITF','CODE_128','PDF_417','DATA_MATRIX','QR_CODE','CODE_39','EAN_13','EAN_8','UPC_A','AZTEC']
+          .map(k => BarcodeFormat[k]).filter(Boolean);
+        hints = new Map();
+        hints.set(DecodeHintType.TRY_HARDER, true);
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, formats);
+      }
+    } catch (_) {
+      // No-op: decode will still work without hints
     }
 
     // Prefer back camera + decent resolution
@@ -299,14 +297,7 @@ function normalizeBaggageCode(s){
       audio: false
     };
 
-    // Try with hints; if it throws on some devices, retry without hints
-    const tryDecode = (useHints=true) =>
-      ZXB.decodeFromConstraints
-        ? ZXB.decodeFromConstraints(constraints, $video, onResult, useHints ? hints : undefined)
-        : reader.decodeFromConstraints(constraints, $video, onResult, useHints ? hints : undefined);
-
-    const reader = new BrowserMultiFormatReader();
-
+    // Try with hints; if that throws on some devices, retry without hints
     const onResult = (result, err) => {
       if(!isScanning) return;
       if (result) {
@@ -314,21 +305,21 @@ function normalizeBaggageCode(s){
         const norm = normalizeBaggageCode(raw);
         onScan(norm || raw);
       }
-      // ignore NotFound noise
     };
 
     try {
       await reader.decodeFromConstraints(constraints, $video, onResult, hints);
     } catch (e) {
       console.warn('[Bagvoyage] decode with hints failed, retrying without hints:', e);
-      await reader.decodeFromConstraints(constraints, $video, onResult); // no hints fallback
+      await reader.decodeFromConstraints(constraints, $video, onResult); // fallback
     }
 
-    // Cache track for torch control
+    // Cache track for Torch support
     const stream = $video.srcObject;
     currentTrack = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
 
   }catch(e){
+    console.error(e);
     alert('Camera access failed: ' + e.message);
     setCamStatus(false);
     isScanning = false;
