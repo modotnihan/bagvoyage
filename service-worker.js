@@ -3,7 +3,7 @@ self.addEventListener('activate', e => self.clients.claim());
 // (Add caching later if needed)
 // service-worker.js
 // service-worker.js
-const CACHE_VERSION = 'v1.0.7';                 
+const CACHE_VERSION = 'v1.0.8';                 
 const CACHE_NAME = `bagvoyage-${CACHE_VERSION}`;
 const PRECACHE = [
   './',                                        
