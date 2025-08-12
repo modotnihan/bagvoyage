@@ -251,24 +251,57 @@
       function showScan(m){ mode=m; $title.textContent = m==='tag'?'Tag — scanning':'Retrieve — scan to verify'; $home.classList.add('hidden'); $scan.classList.remove('hidden'); }
 
       async function startScan(m){
-        if(isScanning) return;
-        showScan(m);
-        isScanning = true;
-        setCamStatus(true);
-        try{
-          await reader.decodeFromVideoDevice(undefined, $video, (result, err)=>{
-            if(!isScanning) return;
-            if(result){ onScan(result.getText()); }
-          });
-          const stream = $video.srcObject;
-          currentTrack = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
-        }catch(e){
-          alert('Camera access failed: ' + e.message);
-          setCamStatus(false);
-          isScanning = false;
-          showHome();
-        }
+  if(isScanning) return;
+  showScan(m);
+  isScanning = true;
+  setCamStatus(true);
+
+  try{
+    const { BrowserMultiFormatReader, BarcodeFormat, DecodeHintType } = ZXingBrowser;
+
+    // Enable baggage-relevant formats + try-harder
+    const hints = new Map();
+    hints.set(DecodeHintType.TRY_HARDER, true);
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      BarcodeFormat.ITF,          // Interleaved 2 of 5 (IATA license plate)
+      BarcodeFormat.CODE_128,
+      BarcodeFormat.PDF_417,
+      BarcodeFormat.DATA_MATRIX,
+      BarcodeFormat.QR_CODE,
+      BarcodeFormat.CODE_39,
+      BarcodeFormat.EAN_13,
+      BarcodeFormat.EAN_8,
+      BarcodeFormat.UPC_A,
+      BarcodeFormat.AZTEC
+    ]);
+
+    // Prefer back camera + decent resolution
+    const constraints = {
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    };
+
+    await reader.decodeFromConstraints(constraints, $video, (result, err) => {
+      if(!isScanning) return;
+      if (result) {
+        const raw = result.getText();
+        const norm = normalizeBaggageCode(raw);
+        onScan(norm || raw);
       }
+      // ignore NotFound noise
+    }, hints);
+
+    // cache track for torch
+    const stream = $video.srcObject;
+    currentTrack = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+
+  }catch(e){
+    alert('Camera access failed: ' + e.message);
+    setCamStatus(false);
+    isScanning = false;
+    showHome();
+  }
+}
 
       function stopScan(){
         if(!isScanning) return;
