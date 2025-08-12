@@ -262,71 +262,65 @@ function normalizeBaggageCode(s){
       function showHome(){ $scan.classList.add('hidden'); $home.classList.remove('hidden'); mode=null; setCamStatus(false); }
       function showScan(m){ mode=m; $title.textContent = m==='tag'?'Tag — scanning':'Retrieve — scan to verify'; $home.classList.add('hidden'); $scan.classList.remove('hidden'); }
 
-async function startScan(m){
-  if(isScanning) return;
+async function startScan(m) {
+  if (isScanning) return;
   showScan(m);
   isScanning = true;
   setCamStatus(true);
 
-  try{
-    // Make sure ZXing is really there
-    const ZXB = window.ZXingBrowser || {};
-    if (!ZXB.BrowserMultiFormatReader) {
-      throw new Error('ZXing library not loaded yet');
+  try {
+    // Wait until ZXing is there
+    if (!window.ZXingBrowser?.BrowserMultiFormatReader) {
+      throw new Error('ZXing library not loaded');
     }
-    const reader = new ZXB.BrowserMultiFormatReader();
+    const reader = new ZXingBrowser.BrowserMultiFormatReader();
 
-    // Build hints only if enums exist (prevents TRY_HARDER crash)
+    // Stop any previous stream
+    if (currentTrack) {
+      currentTrack.stop();
+      currentTrack = null;
+    }
+
+    // Build hints if possible
     let hints;
-    try {
-      const BarcodeFormat = ZXB.BarcodeFormat || (ZXB.ZXing && ZXB.ZXing.BarcodeFormat);
-      const DecodeHintType = ZXB.DecodeHintType || (ZXB.ZXing && ZXB.ZXing.DecodeHintType);
-      if (BarcodeFormat && DecodeHintType) {
-        const formats = ['ITF','CODE_128','PDF_417','DATA_MATRIX','QR_CODE','CODE_39','EAN_13','EAN_8','UPC_A','AZTEC']
-          .map(k => BarcodeFormat[k]).filter(Boolean);
-        hints = new Map();
-        hints.set(DecodeHintType.TRY_HARDER, true);
-        hints.set(DecodeHintType.POSSIBLE_FORMATS, formats);
-      }
-    } catch (_) {
-      // No-op: decode will still work without hints
+    const BarcodeFormat = ZXingBrowser.BarcodeFormat;
+    const DecodeHintType = ZXingBrowser.DecodeHintType;
+    if (BarcodeFormat && DecodeHintType) {
+      const formats = [
+        BarcodeFormat.ITF, BarcodeFormat.CODE_128, BarcodeFormat.PDF_417,
+        BarcodeFormat.DATA_MATRIX, BarcodeFormat.QR_CODE, BarcodeFormat.CODE_39,
+        BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.AZTEC
+      ];
+      hints = new Map();
+      hints.set(DecodeHintType.TRY_HARDER, true);
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, formats);
     }
 
-    // Prefer back camera + decent resolution
     const constraints = {
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
     };
 
-    // Try with hints; if that throws on some devices, retry without hints
-    const onResult = (result, err) => {
-      if(!isScanning) return;
+    await reader.decodeFromConstraints(constraints, $video, (result, err) => {
+      if (!isScanning) return;
       if (result) {
         const raw = result.getText();
         const norm = normalizeBaggageCode(raw);
         onScan(norm || raw);
       }
-    };
+    }, hints);
 
-    try {
-      await reader.decodeFromConstraints(constraints, $video, onResult, hints);
-    } catch (e) {
-      console.warn('[Bagvoyage] decode with hints failed, retrying without hints:', e);
-      await reader.decodeFromConstraints(constraints, $video, onResult); // fallback
-    }
-
-    // Cache track for Torch support
     const stream = $video.srcObject;
-    currentTrack = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+    currentTrack = stream?.getVideoTracks?.()[0] || null;
 
-  }catch(e){
-    console.error(e);
+  } catch (e) {
+    console.error('[Bagvoyage] startScan error:', e);
     alert('Camera access failed: ' + e.message);
     setCamStatus(false);
     isScanning = false;
     showHome();
   }
 }
+
 
       // Torch toggle (when supported)
       document.getElementById('btnTorch').addEventListener('click', async ()=>{
