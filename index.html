@@ -223,48 +223,67 @@
       function showScan(m){ mode=m; $title.textContent = m==='tag'?'Tag — scanning':'Retrieve — scan to verify'; $home.classList.add('hidden'); $scan.classList.remove('hidden'); }
       function setCamStatus(active){ if(active){ $camDot.className='dot ok'; $camLabel.textContent='Camera: active'; } else { $camDot.className='dot'; $camLabel.textContent='Camera: idle'; } }
 
-      async function startScan(m){
-        if(isScanning) return;
-        showScan(m);
-        isScanning = true;
-        setCamStatus(true);
+    async function startScan(m){
+  if(isScanning) return;
+  showScan(m);
+  isScanning = true;
+  setCamStatus(true);
 
-        try{
-          if (!window.ZXingBrowser?.BrowserMultiFormatReader) throw new Error('ZXing library not loaded');
-          const reader = new ZXingBrowser.BrowserMultiFormatReader();
+  try{
+    if (!window.ZXingBrowser?.BrowserMultiFormatReader) {
+      throw new Error('ZXing library not loaded');
+    }
+    const reader = new ZXingBrowser.BrowserMultiFormatReader();
 
-          if (currentTrack) { try{ currentTrack.stop(); }catch{} currentTrack = null; }
+    // stop old stream if any
+    if (currentTrack) { try{ currentTrack.stop(); }catch{} currentTrack = null; }
 
-          // Hints if available
-          let hints;
-          const BF = ZXingBrowser.BarcodeFormat, HT = ZXingBrowser.DecodeHintType;
-          if (BF && HT) {
-            const formats = [BF.ITF,BF.CODE_128,BF.PDF_417,BF.DATA_MATRIX,BF.QR_CODE,BF.CODE_39,BF.EAN_13,BF.EAN_8,BF.UPC_A,BF.AZTEC].filter(Boolean);
-            hints = new Map(); hints.set(HT.TRY_HARDER, true); hints.set(HT.POSSIBLE_FORMATS, formats);
-          }
+    // FORCE baggage formats (1D + ITF); still allow QR/DataMatrix/PDF417
+    let hints;
+    const BF = ZXingBrowser.BarcodeFormat;
+    const HT = ZXingBrowser.DecodeHintType;
+    if (BF && HT) {
+      const formats = [
+        BF.ITF, BF.CODE_128, BF.CODE_39, BF.EAN_13, BF.EAN_8, BF.UPC_A,   // baggage / retail 1D
+        BF.QR_CODE, BF.DATA_MATRIX, BF.PDF_417                            // allowed 2D
+      ].filter(Boolean);
+      hints = new Map();
+      hints.set(HT.TRY_HARDER, true);
+      hints.set(HT.POSSIBLE_FORMATS, formats);
+    }
 
-          const constraints = { video: { facingMode:{ ideal:'environment' }, width:{ ideal:1280 }, height:{ ideal:720 } } };
+    // ask for back cam and higher res (helps 1D)
+    const constraints = {
+      video: { facingMode:{ ideal:'environment' }, width:{ ideal:1920 }, height:{ ideal:1080 } },
+      audio: false
+    };
 
-          await reader.decodeFromConstraints(constraints, $video, (result, err) => {
-            if(!isScanning) return;
-            if (result) {
-              const raw = result.getText();
-              const norm = normalizeBaggageCode(raw);
-              onScan(norm || raw);
-            }
-          }, hints);
+    // small debug pill to show detected format
+    const showFormat = f => { $pill.textContent = f ? String(f) : '…'; };
 
-          const stream = $video.srcObject;
-          currentTrack = stream?.getVideoTracks?.()[0] || null;
-
-        }catch(e){
-          console.error('[Bagvoyage] startScan error:', e);
-          alert('Camera access failed: ' + e.message);
-          setCamStatus(false);
-          isScanning = false;
-          showHome();
-        }
+    await reader.decodeFromConstraints(constraints, $video, (result, err) => {
+      if(!isScanning) return;
+      if (result) {
+        // show barcode format for debugging
+        try { showFormat(result.getBarcodeFormat && result.getBarcodeFormat().toString()); } catch {}
+        const raw = result.getText();
+        const norm = normalizeBaggageCode(raw);
+        onScan(norm || raw);
       }
+    }, hints);
+
+    const stream = $video.srcObject;
+    currentTrack = stream?.getVideoTracks?.()[0] || null;
+
+  }catch(e){
+    console.error('[Bagvoyage] startScan error:', e);
+    alert('Camera access failed: ' + e.message);
+    setCamStatus(false);
+    isScanning = false;
+    showHome();
+  }
+}
+
 
       function stopScan(){
         if(!isScanning) return;
