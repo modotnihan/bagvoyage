@@ -255,28 +255,39 @@ async function startScan(m){
     }
 
     // Start camera with default back camera when possible
-    await reader.decodeFromVideoDevice(
-      undefined,               // let ZXing pick; it prefers environment when available
-      $video,
-      (result, err) => {
-        if (!isScanning) return;
-        if (result) {
-          const raw = result.getText();
-          const digits = extractDigits(raw);
-          // split-label support (kept): buffer fragments and try to assemble
-          addFragment(digits);
-          const assembled = tryAssemble();
-          const payload = assembled || (digits && digits.length >= 8 ? digits : '');
-          if (!payload) return;
+  await reader.decodeFromVideoDevice(
+  undefined,
+  $video,
+  (result, err) => {
+    if (!isScanning) return;
+    if (!result) return;
 
-          // clear buffer to prevent double-firing
-          fragBuffer = [];
-          onScan(payload);
-        }
-        // ignore err; ZXing fires many decode attempts
-      },
-      hints
-    );
+    const raw = result.getText();
+    // keep digits (for baggage assembly) but don't throw away non-numeric QR text
+    const digits = extractDigits(raw);
+
+    // feed the split-label combiner (safe no-op for QR)
+    if (digits) addFragment(digits);
+    const assembled = tryAssemble(); // '' if not applicable
+
+    // choose a payload we will save/compare consistently
+    // 1) full baggage number       2) numeric fallback       3) raw QR/text
+    const processed = normalizeBaggageCode(raw) || digits || raw;
+    const payload   = assembled || processed;
+
+    if (!payload) return;
+
+    // avoid double fires on same pair
+    fragBuffer = [];
+
+    // TEMP: brief toast so you can see what we’re decoding (remove later)
+    // toast(payload, 600);
+
+    onScan(payload);
+  },
+  hints
+);
+
 
     // give the browser a tick to attach the MediaStream to the <video>
     setTimeout(() => {
