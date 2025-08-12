@@ -1,36 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Bagvoyage</title>
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" sizes="32x32" href="img/bagvoyage-icon-32.png">
-
-  <!-- Apple Touch Icon -->
-  <link rel="apple-touch-icon" href="img/bagvoyage-icon-180.png">
-
-  <!-- PWA Manifest -->
-  <link rel="manifest" href="manifest.json">
+  <!-- Icons / PWA -->
+  <link rel="icon" type="image/png" sizes="32x32" href="img/bagvoyage-icon-32.png" />
+  <link rel="apple-touch-icon" href="img/bagvoyage-icon-180.png" />
+  <link rel="manifest" href="manifest.json" />
 
   <!-- Theme Colors -->
-  <meta name="theme-color" content="#1aa3ff">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-</head>
+  <meta name="theme-color" content="#1aa3ff" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-
-  <!-- Fonts & ZXing -->
+  <!-- Fonts & ZXing (must be inside <head>) -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
- 
+  <script src="https://unpkg.com/@zxing/browser@latest"></script>
 
   <style>
     :root{
       --bg:#0b1220; --surface:#0f1b33; --card:#101a2e; --outline:#1f2a44;
       --text:#e7eefc; --muted:#9fb0d0;
-      --primary:#1aa3ff;  /* brand primary */
-      --ok:#00cc88;       /* success */
-      --bad:#ff4f5e;      /* alert */
+      --primary:#1aa3ff;  --ok:#00cc88; --bad:#ff4f5e;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
@@ -44,22 +36,17 @@
     .dot{width:8px;height:8px;border-radius:999px;background:#9ca3af}
     .dot.ok{background:var(--ok)}
     .main{flex:1;display:grid;grid-template-columns:1fr;grid-template-rows:1fr}
-
-    /* Home */
     .home{display:grid;place-items:center;padding:24px}
     .home .stack{display:flex;flex-direction:column;gap:12px;width:min(420px,92%)}
     .btn{appearance:none;border:0;border-radius:16px;padding:16px 18px;font-weight:800;cursor:pointer;font-size:16px}
     .btn.primary{background:var(--primary);color:#001421}
     .btn.ghost{background:transparent;color:var(--text);border:1px solid var(--outline)}
-
-    /* Scanner */
     .scan{position:relative;background:#000;display:grid;grid-template-rows:auto 1fr auto}
     .scan video{width:100%;height:100%;object-fit:cover}
     .toolbar{display:flex;gap:8px;padding:10px;border-bottom:1px solid var(--outline);background:linear-gradient(180deg,rgba(15,27,51,.9),rgba(15,27,51,.75))}
     .toolbar .title{font-weight:800}
     .toolbar .spacer{flex:1}
     .toolbar .btn{padding:10px 12px;border-radius:12px}
-
     .frame{pointer-events:none}
     .corn{position:absolute;width:34px;height:34px;border:3px solid rgba(255,255,255,.9);opacity:.9}
     .tl{left:10%;top:14%;border-right:none;border-bottom:none;border-radius:6px 0 0 0}
@@ -68,8 +55,6 @@
     .br{right:10%;bottom:14%;border-left:none;border-top:none;border-radius:0 0 6px 0}
     .line{position:absolute;left:12%;right:12%;top:16%;height:2px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.95),transparent);box-shadow:0 0 18px rgba(255,255,255,.8);animation:sweep 2.2s linear infinite}
     @keyframes sweep{from{transform:translateY(0)}to{transform:translateY(58vh)}}
-
-    /* Sheets & toasts */
     .sheet{position:absolute;inset:auto 0 0 0;background:rgba(15,27,51,.96);border-top-left-radius:18px;border-top-right-radius:18px;padding:16px 16px 18px;border-top:1px solid var(--outline);transform:translateY(110%);transition:transform .22s ease;z-index:5}
     .sheet.show{transform:translateY(0)}
     .sheet .row{display:flex;gap:10px;align-items:center;justify-content:space-between}
@@ -78,45 +63,36 @@
     .pill.bad{background:rgba(255,79,94,.15);color:#ffc2c7;border:1px solid rgba(255,79,94,.35)}
     .toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:rgba(16,26,46,.98);border:1px solid var(--outline);padding:10px 12px;border-radius:12px;font-weight:700;opacity:0;transition:opacity .18s ease;z-index:6}
     .toast.show{opacity:1}
-
-    /* Dialog */
     dialog{border:1px solid var(--outline);border-radius:16px;background:var(--card);color:var(--text);padding:16px;max-width:420px}
     dialog::backdrop{background:rgba(0,0,0,.5)}
     input[type=text]{width:100%;padding:12px 14px;background:var(--surface);border:1px solid var(--outline);border-radius:12px;color:var(--text);font-weight:600}
-
-    /* Splash */
-    #splash{position:fixed;inset:0;display:grid;place-items:center;
-      background: radial-gradient(800px 600px at 30% 20%, rgba(26,163,255,.25), transparent 40%), #0b1220;
-      z-index:9999; transition:opacity .25s ease}
+    #splash{position:fixed;inset:0;display:grid;place-items:center;background: radial-gradient(800px 600px at 30% 20%, rgba(26,163,255,.25), transparent 40%), #0b1220;z-index:9999;transition:opacity .25s ease}
     #splash.hidden{opacity:0;pointer-events:none}
     #splash .wrap{text-align:center}
     #splash img{width:72px;height:72px;display:block;margin:0 auto 12px}
     #splash h1{margin:0;font-size:20px;letter-spacing:.5px}
-
     .hidden{display:none !important}
   </style>
+
+  <script>
+    // Register SW once (pages-safe SW should precache with relative ./ paths)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js')
+        .then(() => console.log('SW registered'))
+        .catch(err => console.warn('SW registration failed', err));
+    }
+
+    // Normalizer
+    function normalizeBaggageCode(s){
+      if(!s) return '';
+      const digits = (s.match(/\d+/g) || []).join('');
+      if (digits.length === 10 || digits.length === 13) return digits;
+      return (digits.length >= 8 && digits.length <= 20) ? digits : '';
+    }
+  </script>
 </head>
-   <script src="https://unpkg.com/@zxing/browser@latest"></script>
-<script>
-
-  // Basic normalization for baggage tags (keeps numeric payloads common in IATA tags)
-function normalizeBaggageCode(s){
-  if(!s) return '';
-  const digits = (s.match(/\d+/g) || []).join('');
-  // Typical: 10-digit license plate, sometimes 13 with airline prefix
-  if (digits.length === 10 || digits.length === 13) return digits;
-  // Otherwise allow plausible ranges during testing
-  return (digits.length >= 8 && digits.length <= 20) ? digits : '';
-}
-
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js')
-      .then(() => console.log('Service Worker Registered'));
-  }
-</script>
-
 <body>
-  <!-- Splash (inside body) -->
+  <!-- Splash -->
   <div id="splash">
     <div class="wrap">
       <img src="img/bagvoyage-icon-192.png" alt="Bagvoyage logo" />
@@ -127,7 +103,6 @@ function normalizeBaggageCode(s){
   <div class="app" role="application" aria-label="Bagvoyage">
     <div class="hdr">
       <div class="brand">
-        <!-- Inline fallback logo (simple suitcase + check) -->
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <rect x="5" y="7" width="14" height="12" rx="2" ry="2" fill="none" stroke="#1aa3ff" stroke-width="2"/>
           <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" fill="none" stroke="#1aa3ff" stroke-width="2"/>
@@ -173,7 +148,6 @@ function normalizeBaggageCode(s){
     </div>
   </div>
 
-  <!-- Manual entry -->
   <dialog id="manualDialog">
     <form method="dialog">
       <div style="font-weight:800;margin-bottom:8px">Manual entry</div>
@@ -195,34 +169,21 @@ function normalizeBaggageCode(s){
       if(window.__BAGVOYAGE_LOADED__){ console.warn('Bagvoyage already loaded.'); return; }
       window.__BAGVOYAGE_LOADED__ = true;
 
-      const { BrowserMultiFormatReader } = ZXingBrowser;
-      const reader = new BrowserMultiFormatReader();
-
-      // One-time migration: baggage_tags -> bagvoyage_tags
-      const OLD_KEY = 'baggage_tags';
-      const NEW_KEY = 'bagvoyage_tags';
-      (function migrate(){
-        try{
-          const hasNew = localStorage.getItem(NEW_KEY);
-          const old = localStorage.getItem(OLD_KEY);
-          if(!hasNew && old){
-            localStorage.setItem(NEW_KEY, old);
-            localStorage.setItem('bagvoyage_migrated', String(Date.now()));
-            console.log('[Bagvoyage] Migrated local data from', OLD_KEY, 'to', NEW_KEY);
-          }
-        }catch(e){}
-      })();
+      // ZXing ready?
+      if (!window.ZXingBrowser?.BrowserMultiFormatReader) {
+        console.warn('ZXing not ready yet; delaying init');
+      }
 
       // State
       let isScanning = false;
       let mode = null; // 'tag' | 'retrieve'
       let lastRead = { code:null, ts:0 };
-      let currentTrack = null; // for torch
+      let currentTrack = null;
 
       // Local DB
-      const DB = NEW_KEY;
-      const getAll = () => { try{return JSON.parse(localStorage.getItem(DB)||'[]')}catch{return[]} };
-      const saveTag = code => { const a=getAll(); a.unshift({code,ts:Date.now()}); localStorage.setItem(DB, JSON.stringify(a)); };
+      const NEW_KEY = 'bagvoyage_tags';
+      const getAll = () => { try{return JSON.parse(localStorage.getItem(NEW_KEY)||'[]')}catch{return[]} };
+      const saveTag = code => { const a=getAll(); a.unshift({code,ts:Date.now()}); localStorage.setItem(NEW_KEY, JSON.stringify(a)); };
       const exists  = code => getAll().some(x=>x.code===code);
 
       // DOM
@@ -248,122 +209,116 @@ function normalizeBaggageCode(s){
 
       const vibrate = p => { try{ navigator.vibrate && navigator.vibrate(p) }catch{} };
       const toast = (msg, ms=800) => { $toast.textContent=msg; $toast.classList.add('show'); setTimeout(()=>$toast.classList.remove('show'), ms); };
-      const openSheet = (kind, title, code, wait) => {
+
+      function openSheet(kind, title, code, wait){
         $pill.className = 'pill ' + (kind==='ok'?'ok':'bad');
         $pill.textContent = kind==='ok' ? 'MATCH' : 'UNMATCHED';
         $sheetTitle.textContent = title;
         $sheetCode.textContent = code;
-        if (wait) { $btnContinue.classList.remove('hidden'); }
-        else { $btnContinue.classList.add('hidden'); }
+        $btnContinue.classList.toggle('hidden', !wait);
         $sheet.classList.add('show');
         if (!wait) setTimeout(()=> $sheet.classList.remove('show'), 900);
-      };
-
+      }
       function showHome(){ $scan.classList.add('hidden'); $home.classList.remove('hidden'); mode=null; setCamStatus(false); }
       function showScan(m){ mode=m; $title.textContent = m==='tag'?'Tag — scanning':'Retrieve — scan to verify'; $home.classList.add('hidden'); $scan.classList.remove('hidden'); }
+      function setCamStatus(active){ if(active){ $camDot.className='dot ok'; $camLabel.textContent='Camera: active'; } else { $camDot.className='dot'; $camLabel.textContent='Camera: idle'; } }
 
-async function startScan(m) {
-  if (isScanning) return;
-  showScan(m);
-  isScanning = true;
-  setCamStatus(true);
+      async function startScan(m){
+        if(isScanning) return;
+        showScan(m);
+        isScanning = true;
+        setCamStatus(true);
 
-  try {
-    // Wait until ZXing is there
-    if (!window.ZXingBrowser?.BrowserMultiFormatReader) {
-      throw new Error('ZXing library not loaded');
-    }
-    const reader = new ZXingBrowser.BrowserMultiFormatReader();
+        try{
+          if (!window.ZXingBrowser?.BrowserMultiFormatReader) throw new Error('ZXing library not loaded');
+          const reader = new ZXingBrowser.BrowserMultiFormatReader();
 
-    // Stop any previous stream
-    if (currentTrack) {
-      currentTrack.stop();
-      currentTrack = null;
-    }
+          if (currentTrack) { try{ currentTrack.stop(); }catch{} currentTrack = null; }
 
-    // Build hints if possible
-    let hints;
-    const BarcodeFormat = ZXingBrowser.BarcodeFormat;
-    const DecodeHintType = ZXingBrowser.DecodeHintType;
-    if (BarcodeFormat && DecodeHintType) {
-      const formats = [
-        BarcodeFormat.ITF, BarcodeFormat.CODE_128, BarcodeFormat.PDF_417,
-        BarcodeFormat.DATA_MATRIX, BarcodeFormat.QR_CODE, BarcodeFormat.CODE_39,
-        BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.AZTEC
-      ];
-      hints = new Map();
-      hints.set(DecodeHintType.TRY_HARDER, true);
-      hints.set(DecodeHintType.POSSIBLE_FORMATS, formats);
-    }
+          // Hints if available
+          let hints;
+          const BF = ZXingBrowser.BarcodeFormat, HT = ZXingBrowser.DecodeHintType;
+          if (BF && HT) {
+            const formats = [BF.ITF,BF.CODE_128,BF.PDF_417,BF.DATA_MATRIX,BF.QR_CODE,BF.CODE_39,BF.EAN_13,BF.EAN_8,BF.UPC_A,BF.AZTEC].filter(Boolean);
+            hints = new Map(); hints.set(HT.TRY_HARDER, true); hints.set(HT.POSSIBLE_FORMATS, formats);
+          }
 
-    const constraints = {
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
-    };
+          const constraints = { video: { facingMode:{ ideal:'environment' }, width:{ ideal:1280 }, height:{ ideal:720 } } };
 
-    await reader.decodeFromConstraints(constraints, $video, (result, err) => {
-      if (!isScanning) return;
-      if (result) {
-        const raw = result.getText();
-        const norm = normalizeBaggageCode(raw);
-        onScan(norm || raw);
+          await reader.decodeFromConstraints(constraints, $video, (result, err) => {
+            if(!isScanning) return;
+            if (result) {
+              const raw = result.getText();
+              const norm = normalizeBaggageCode(raw);
+              onScan(norm || raw);
+            }
+          }, hints);
+
+          const stream = $video.srcObject;
+          currentTrack = stream?.getVideoTracks?.()[0] || null;
+
+        }catch(e){
+          console.error('[Bagvoyage] startScan error:', e);
+          alert('Camera access failed: ' + e.message);
+          setCamStatus(false);
+          isScanning = false;
+          showHome();
+        }
       }
-    }, hints);
 
-    const stream = $video.srcObject;
-    currentTrack = stream?.getVideoTracks?.()[0] || null;
+      function stopScan(){
+        if(!isScanning) return;
+        isScanning = false;
+        try{ if (window.ZXingBrowser?.BrowserMultiFormatReader) { /* reader.reset() is per instance; stream stopped below */ } }catch{}
+        if (currentTrack) { try{ currentTrack.stop(); }catch{} currentTrack = null; }
+        setCamStatus(false);
+      }
 
-  } catch (e) {
-    console.error('[Bagvoyage] startScan error:', e);
-    alert('Camera access failed: ' + e.message);
-    setCamStatus(false);
-    isScanning = false;
-    showHome();
-  }
-}
+      function onScan(text){
+        const code = (text||'').trim();
+        if(!code) return;
+        const now = Date.now();
+        if(code===lastRead.code && (now-lastRead.ts)<900) return;
+        lastRead = { code, ts: now };
 
+        if(mode==='tag'){
+          saveTag(code); vibrate(30); toast('Saved');
+        }else if(mode==='retrieve'){
+          const ok = exists(code);
+          if(ok){ vibrate([40,60,40]); stopScan(); openSheet('ok','MATCH',code,true); }
+          else{  vibrate([30,40,30]);  openSheet('bad','UNMATCHED',code,false); }
+        }
+      }
 
-      // Torch toggle (when supported)
+      // Torch toggle
       document.getElementById('btnTorch').addEventListener('click', async ()=>{
         if(!currentTrack) return;
         try{
           const caps = currentTrack.getCapabilities && currentTrack.getCapabilities();
           if(caps && caps.torch){
-            const settings = currentTrack.getSettings();
-            const next = !settings.torch;
+            const next = !currentTrack.getSettings().torch;
             await currentTrack.applyConstraints({ advanced:[{ torch: next }] });
-          }else{
-            toast('Torch not supported', 1000);
-          }
+          }else{ toast('Torch not supported', 1000); }
         }catch{ toast('Torch control failed', 1000); }
       });
 
       // Continue & Exit
-      $btnContinue.addEventListener('click', ()=>{
-        $sheet.classList.remove('show');
-        startScan('retrieve'); // resume same mode
-      });
-      document.getElementById('btnStop').addEventListener('click', ()=>{
-        stopScan();
-        showHome();
-      });
+      $btnContinue.addEventListener('click', ()=>{ $sheet.classList.remove('show'); startScan('retrieve'); });
+      document.getElementById('btnStop').addEventListener('click', ()=>{ stopScan(); showHome(); });
 
       // Home buttons
       document.getElementById('btnTag').addEventListener('click', ()=> startScan('tag'));
       document.getElementById('btnRetrieve').addEventListener('click', ()=> startScan('retrieve'));
 
-      // Manual entry dialog
+      // Manual entry
       document.getElementById('btnManual').addEventListener('click', ()=> { $manualInput.value=''; $manualDlg.showModal(); });
       document.getElementById('manualApply').addEventListener('click', (e)=>{
         e.preventDefault();
-        const v = ($manualInput.value||'').trim();
-        if(!v) return;
+        const v = ($manualInput.value||'').trim(); if(!v) return;
         if(!mode || mode==='tag'){ saveTag(v); toast('Saved'); }
         else { exists(v) ? (stopScan(), openSheet('ok','MATCH',v,true)) : openSheet('bad','UNMATCHED',v,false); }
         $manualDlg.close();
       });
-
-   
-      }
     })();
   </script>
 </body>
