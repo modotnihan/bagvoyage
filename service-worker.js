@@ -2,17 +2,21 @@ self.addEventListener('install', e => self.skipWaiting());
 self.addEventListener('activate', e => self.clients.claim());
 // (Add caching later if needed)
 // service-worker.js
-const CACHE_VERSION = 'v1.0.4';
+// service-worker.js
+const CACHE_VERSION = 'v1.0.5';                 
 const CACHE_NAME = `bagvoyage-${CACHE_VERSION}`;
 const PRECACHE = [
-  '/',                 // if deploying at root; change to '/Bagvoyage/' on GitHub Pages
-  '/index.html',
-  '/manifest.json',
-  '/img/bagvoyage-icon-32.png',
-  '/img/bagvoyage-icon-180.png',
-  '/img/bagvoyage-icon-192.png',
-  '/img/bagvoyage-icon-512.png'
+  './',                                        
+  './index.html',
+  './manifest.json',
+  './img/bagvoyage-icon-32.png',
+  './img/bagvoyage-icon-180.png',
+  './img/bagvoyage-icon-192.png',
+  './img/bagvoyage-icon-512.png'
 ];
+
+// (keep the rest of your SW code the same)
+
 
 // Install: pre-cache core assets
 self.addEventListener('install', event => {
