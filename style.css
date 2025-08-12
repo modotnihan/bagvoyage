@@ -99,8 +99,11 @@ body{
 .line{
   position:absolute; left:12%; right:12%; top:16%; height:2px;
   background:linear-gradient(90deg,transparent,rgba(255,255,255,.95),transparent);
-  box-shadow:0 0 18px rgba(255,255,255,.8);
-  animation:sweep 2.2s linear infinite;
+  will-change: transform; /* Hint to GPU */
+  animation:sweep 2.2s linear infinite paused; /* Pause by default */
+}
+.scan.active .line {
+  animation-play-state: running; /* Run only when scanning */
 }
 @keyframes sweep{ from{ transform:translateY(0) } to{ transform:translateY(58vh) } }
 
@@ -160,6 +163,16 @@ body{
 
 /* Utilities */
 .hidden{ display:none !important }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
 
 /* Small screens */
 @media (max-width:360px){
