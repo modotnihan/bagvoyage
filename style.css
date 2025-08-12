@@ -166,3 +166,35 @@ body{
 @media (max-width:420px){
   .corn{ width:28px; height:28px; border-width:2px }
 }
+
+/* 1) Viewport fallbacks for older iOS / Android */
+.app{
+  min-height: 100vh;          /* fallback */
+  height: 100dvh;             /* modern */
+}
+@supports (height: 100svh){
+  .app{ height: 100svh; }     /* iOS 16+/Chrome new */
+}
+@supports (-webkit-touch-callout: none){
+  /* Older iOS fallback */
+  .app{ min-height: -webkit-fill-available; }
+}
+
+/* 2) Extra-small screens (320–360px wide) */
+@media (max-width: 360px){
+  .hdr{ padding:10px 12px }
+  .chip{ font-size:11px; padding:5px 8px }
+  .btn{ padding:14px 16px; font-size:15px; border-radius:14px }
+  .corn{ width:26px; height:26px; border-width:2px }
+  .line{ left:14%; right:14% }
+  .sheet{ padding:14px 14px calc(16px + var(--safe-bottom)) }
+  #btnContinue{ min-height:42px }
+}
+
+/* 3) Landscape phones: shrink overlays a bit */
+@media (orientation: landscape) and (max-height: 480px){
+  .corn{ width:24px; height:24px; border-width:2px }
+  .line{ top:12% }
+  .toolbar{ padding:8px }
+}
+
