@@ -14,23 +14,20 @@
   <meta name="theme-color" content="#1aa3ff" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <!-- Fonts & ZXing (must be inside <head>) -->
+  <!-- Fonts & ZXing -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <script src="https://unpkg.com/@zxing/browser@latest"></script>
 
   <style>
-    :root{
-      --bg:#0b1220; --surface:#0f1b33; --card:#101a2e; --outline:#1f2a44;
-      --text:#e7eefc; --muted:#9fb0d0;
-      --primary:#1aa3ff;  --ok:#00cc88; --bad:#ff4f5e;
-    }
+    :root{ --bg:#0b1220; --surface:#0f1b33; --card:#101a2e; --outline:#1f2a44;
+      --text:#e7eefc; --muted:#9fb0d0; --primary:#1aa3ff; --ok:#00cc88; --bad:#ff4f5e; }
     *{box-sizing:border-box}
     html,body{height:100%}
     body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto;display:grid;place-items:center}
     .app{width:min(980px,100%);height:min(680px,100vh);background:var(--card);border:1px solid var(--outline);border-radius:20px;overflow:hidden;display:flex;flex-direction:column}
     .hdr{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid var(--outline);font-weight:800}
     .brand{display:flex;align-items:center;gap:10px}
-    .brand img,.brand svg{width:22px;height:22px}
+    .brand svg{width:22px;height:22px}
     .hdr .right{display:flex;gap:8px;align-items:center}
     .chip{display:inline-flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--outline);border-radius:999px;padding:6px 10px;color:var(--muted);font-size:12px}
     .dot{width:8px;height:8px;border-radius:999px;background:#9ca3af}
@@ -75,19 +72,35 @@
   </style>
 
   <script>
-    // Register SW once (pages-safe SW should precache with relative ./ paths)
+    // Register SW
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js')
         .then(() => console.log('SW registered'))
         .catch(err => console.warn('SW registration failed', err));
     }
 
-    // Normalizer
+    // ---------- Helpers ----------
+    function extractDigits(s){ return (s && s.match(/\d+/g)) ? s.match(/\d+/g).join('') : ''; }
     function normalizeBaggageCode(s){
-      if(!s) return '';
-      const digits = (s.match(/\d+/g) || []).join('');
-      if (digits.length === 10 || digits.length === 13) return digits;
-      return (digits.length >= 8 && digits.length <= 20) ? digits : '';
+      const d = extractDigits(s);
+      return (d.length === 10 || d.length === 13) ? d : '';
+    }
+    // Split-label assembly (combine two Code128 halves within 1s)
+    const FRAG_WINDOW_MS = 1000;
+    let fragBuffer = []; // {digits, ts}
+    function addFragment(d){ const now=Date.now(); fragBuffer.push({digits:d, ts:now});
+      fragBuffer = fragBuffer.filter((f,i,a)=> now-f.ts<=FRAG_WINDOW_MS && (i===0 || f.digits!==a[i-1].digits)); }
+    function tryAssemble(){
+      if (fragBuffer.length < 2) return '';
+      const a = fragBuffer[fragBuffer.length-2].digits;
+      const b = fragBuffer[fragBuffer.length-1].digits;
+      if (!a || !b || a===b) return '';
+      const ab=a+b, ba=b+a;
+      if (ab.length===10 || ab.length===13) return ab;
+      if (ba.length===10 || ba.length===13) return ba;
+      if (a.length===10 || a.length===13) return a;
+      if (b.length===10 || b.length===13) return b;
+      return '';
     }
   </script>
 </head>
@@ -105,7 +118,7 @@
       <div class="brand">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <rect x="5" y="7" width="14" height="12" rx="2" ry="2" fill="none" stroke="#1aa3ff" stroke-width="2"/>
-          <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" fill="none" stroke="#1aa3ff" stroke-width="2"/>
+          <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0  1 2 2v2" fill="none" stroke="#1aa3ff" stroke-width="2"/>
           <path d="M8 13l2.2 2.2L16 9.5" fill="none" stroke="#00cc88" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <span>Bagvoyage</span>
@@ -160,7 +173,7 @@
   </dialog>
 
   <script>
-    // Hide splash when app is ready
+    // Splash hide
     window.addEventListener('load', () => {
       setTimeout(() => document.getElementById('splash').classList.add('hidden'), 250);
     });
@@ -169,21 +182,14 @@
       if(window.__BAGVOYAGE_LOADED__){ console.warn('Bagvoyage already loaded.'); return; }
       window.__BAGVOYAGE_LOADED__ = true;
 
-      // ZXing ready?
-      if (!window.ZXingBrowser?.BrowserMultiFormatReader) {
-        console.warn('ZXing not ready yet; delaying init');
-      }
-
       // State
-      let isScanning = false;
-      let mode = null; // 'tag' | 'retrieve'
+      let isScanning = false, mode = null, currentTrack = null;
       let lastRead = { code:null, ts:0 };
-      let currentTrack = null;
 
       // Local DB
-      const NEW_KEY = 'bagvoyage_tags';
-      const getAll = () => { try{return JSON.parse(localStorage.getItem(NEW_KEY)||'[]')}catch{return[]} };
-      const saveTag = code => { const a=getAll(); a.unshift({code,ts:Date.now()}); localStorage.setItem(NEW_KEY, JSON.stringify(a)); };
+      const DBKEY = 'bagvoyage_tags';
+      const getAll = () => { try{return JSON.parse(localStorage.getItem(DBKEY)||'[]')}catch{return[]} };
+      const saveTag = code => { const a=getAll(); a.unshift({code,ts:Date.now()}); localStorage.setItem(DBKEY, JSON.stringify(a)); };
       const exists  = code => getAll().some(x=>x.code===code);
 
       // DOM
@@ -204,7 +210,6 @@
       const $manualDlg = document.getElementById('manualDialog');
       const $manualInput = document.getElementById('manualInput');
 
-      // status
       setTimeout(()=>{ $dbDot.className='dot ok'; $dbLabel.textContent='DB: online (local demo)'; }, 300);
 
       const vibrate = p => { try{ navigator.vibrate && navigator.vibrate(p) }catch{} };
@@ -213,82 +218,65 @@
       function openSheet(kind, title, code, wait){
         $pill.className = 'pill ' + (kind==='ok'?'ok':'bad');
         $pill.textContent = kind==='ok' ? 'MATCH' : 'UNMATCHED';
-        $sheetTitle.textContent = title;
-        $sheetCode.textContent = code;
+        $sheetTitle.textContent = title; $sheetCode.textContent = code;
         $btnContinue.classList.toggle('hidden', !wait);
-        $sheet.classList.add('show');
-        if (!wait) setTimeout(()=> $sheet.classList.remove('show'), 900);
+        $sheet.classList.add('show'); if (!wait) setTimeout(()=> $sheet.classList.remove('show'), 900);
       }
       function showHome(){ $scan.classList.add('hidden'); $home.classList.remove('hidden'); mode=null; setCamStatus(false); }
       function showScan(m){ mode=m; $title.textContent = m==='tag'?'Tag — scanning':'Retrieve — scan to verify'; $home.classList.add('hidden'); $scan.classList.remove('hidden'); }
       function setCamStatus(active){ if(active){ $camDot.className='dot ok'; $camLabel.textContent='Camera: active'; } else { $camDot.className='dot'; $camLabel.textContent='Camera: idle'; } }
 
-    async function startScan(m){
-  if(isScanning) return;
-  showScan(m);
-  isScanning = true;
-  setCamStatus(true);
+      async function startScan(m){
+        if(isScanning) return;
+        showScan(m); isScanning = true; setCamStatus(true);
 
-  try{
-    if (!window.ZXingBrowser?.BrowserMultiFormatReader) {
-      throw new Error('ZXing library not loaded');
-    }
-    const reader = new ZXingBrowser.BrowserMultiFormatReader();
+        try{
+          if (!window.ZXingBrowser?.BrowserMultiFormatReader) throw new Error('ZXing library not loaded');
+          const reader = new ZXingBrowser.BrowserMultiFormatContinuousReader();
 
-    // stop old stream if any
-    if (currentTrack) { try{ currentTrack.stop(); }catch{} currentTrack = null; }
+          if (currentTrack) { try{ currentTrack.stop(); }catch{} currentTrack = null; }
 
-    // FORCE baggage formats (1D + ITF); still allow QR/DataMatrix/PDF417
-    let hints;
-    const BF = ZXingBrowser.BarcodeFormat;
-    const HT = ZXingBrowser.DecodeHintType;
-    if (BF && HT) {
-      const formats = [
-        BF.ITF, BF.CODE_128, BF.CODE_39, BF.EAN_13, BF.EAN_8, BF.UPC_A,   // baggage / retail 1D
-        BF.QR_CODE, BF.DATA_MATRIX, BF.PDF_417                            // allowed 2D
-      ].filter(Boolean);
-      hints = new Map();
-      hints.set(HT.TRY_HARDER, true);
-      hints.set(HT.POSSIBLE_FORMATS, formats);
-    }
+          // Hints: baggage formats first, allow common 2D
+          let hints;
+          const BF = ZXingBrowser.BarcodeFormat, HT = ZXingBrowser.DecodeHintType;
+          if (BF && HT) {
+            const formats = [ BF.ITF, BF.CODE_128, BF.CODE_39, BF.EAN_13, BF.EAN_8, BF.UPC_A, BF.QR_CODE, BF.DATA_MATRIX, BF.PDF_417 ].filter(Boolean);
+            hints = new Map(); hints.set(HT.TRY_HARDER, true); hints.set(HT.POSSIBLE_FORMATS, formats);
+          }
+          const constraints = { video: { facingMode:{ ideal:'environment' }, width:{ ideal:1920 }, height:{ ideal:1080 } } };
 
-    // ask for back cam and higher res (helps 1D)
-    const constraints = {
-      video: { facingMode:{ ideal:'environment' }, width:{ ideal:1920 }, height:{ ideal:1080 } },
-      audio: false
-    };
+          await reader.decodeFromConstraints(constraints, $video, (result, err) => {
+            if(!isScanning) return;
+            if (result) {
+              const raw = result.getText();
+              const digits = extractDigits(raw);
+              if (!digits) return;
 
-    // small debug pill to show detected format
-    const showFormat = f => { $pill.textContent = f ? String(f) : '…'; };
+              addFragment(digits);
+              const assembled = tryAssemble();
+              const payload = assembled || (digits.length >= 10 ? digits : '');
+              if (!payload) return;
 
-    await reader.decodeFromConstraints(constraints, $video, (result, err) => {
-      if(!isScanning) return;
-      if (result) {
-        // show barcode format for debugging
-        try { showFormat(result.getBarcodeFormat && result.getBarcodeFormat().toString()); } catch {}
-        const raw = result.getText();
-        const norm = normalizeBaggageCode(raw);
-        onScan(norm || raw);
+              fragBuffer = []; // consume success
+              onScan(payload);
+            }
+          }, hints);
+
+          const stream = $video.srcObject;
+          currentTrack = stream?.getVideoTracks?.[0] || null;
+          window.__bagvoyage_reader__ = reader;
+
+        }catch(e){
+          console.error('[Bagvoyage] startScan error:', e);
+          alert('Camera access failed: ' + e.message);
+          setCamStatus(false); isScanning = false; showHome();
+        }
       }
-    }, hints);
-
-    const stream = $video.srcObject;
-    currentTrack = stream?.getVideoTracks?.()[0] || null;
-
-  }catch(e){
-    console.error('[Bagvoyage] startScan error:', e);
-    alert('Camera access failed: ' + e.message);
-    setCamStatus(false);
-    isScanning = false;
-    showHome();
-  }
-}
-
 
       function stopScan(){
         if(!isScanning) return;
         isScanning = false;
-        try{ if (window.ZXingBrowser?.BrowserMultiFormatReader) { /* reader.reset() is per instance; stream stopped below */ } }catch{}
+        try{ window.__bagvoyage_reader__?.reset?.(); }catch{}
         if (currentTrack) { try{ currentTrack.stop(); }catch{} currentTrack = null; }
         setCamStatus(false);
       }
@@ -297,7 +285,7 @@
         const code = (text||'').trim();
         if(!code) return;
         const now = Date.now();
-        if(code===lastRead.code && (now-lastRead.ts)<900) return;
+        if(code===lastRead.code && (now-lastRead.ts)<900) return; // de-dupe
         lastRead = { code, ts: now };
 
         if(mode==='tag'){
@@ -305,7 +293,7 @@
         }else if(mode==='retrieve'){
           const ok = exists(code);
           if(ok){ vibrate([40,60,40]); stopScan(); openSheet('ok','MATCH',code,true); }
-          else{  vibrate([30,40,30]);  openSheet('bad','UNMATCHED',code,false); }
+          else { vibrate([30,40,30]); openSheet('bad','UNMATCHED',code,false); }
         }
       }
 
