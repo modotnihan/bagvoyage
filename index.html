@@ -225,72 +225,66 @@
       function showHome(){ $scan.classList.add('hidden'); $home.classList.remove('hidden'); mode=null; setCamStatus(false); }
       function showScan(m){ mode=m; $title.textContent = m==='tag'?'Tag — scanning':'Retrieve — scan to verify'; $home.classList.add('hidden'); $scan.classList.remove('hidden'); }
       function setCamStatus(active){ if(active){ $camDot.className='dot ok'; $camLabel.textContent='Camera: active'; } else { $camDot.className='dot'; $camLabel.textContent='Camera: idle'; } }
-
-      async function startScan(m){
+async function startScan(m){
   if (isScanning) return;
   showScan(m);
   isScanning = true;
   setCamStatus(true);
 
   try{
-    // Choose the best available ZXing reader
     const ZXB = window.ZXingBrowser || {};
-    const ReaderClass =
-      ZXB.BrowserMultiFormatContinuousReader || // preferred (if present)
-      ZXB.BrowserMultiFormatReader;             // fallback (always present in most builds)
-
+    const ReaderClass = ZXB.BrowserMultiFormatReader;   // baseline, very compatible
     if (!ReaderClass) throw new Error('ZXing library not loaded');
+
     const reader = new ReaderClass();
 
-    // stop old camera track if any
-    if (currentTrack) { try { currentTrack.stop(); } catch(_) {} currentTrack = null; }
+    // stop any previous stream
+    if (currentTrack) { try{ currentTrack.stop(); }catch{} currentTrack = null; }
 
-    // Hints: prioritize baggage formats + common 2D
+    // Build hints (optional; safe if enums missing)
     let hints;
     const BF = ZXB.BarcodeFormat, HT = ZXB.DecodeHintType;
     if (BF && HT) {
       const formats = [
         BF.ITF, BF.CODE_128, BF.CODE_39, BF.EAN_13, BF.EAN_8, BF.UPC_A, // 1D
-        BF.QR_CODE, BF.DATA_MATRIX, BF.PDF_417                         // 2D allowed
+        BF.QR_CODE, BF.DATA_MATRIX, BF.PDF_417                         // 2D
       ].filter(Boolean);
       hints = new Map();
       hints.set(HT.TRY_HARDER, true);
       hints.set(HT.POSSIBLE_FORMATS, formats);
     }
 
-    // Higher resolution helps 1D bars
-    const constraints = {
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: false
-    };
+    // Start camera with default back camera when possible
+    await reader.decodeFromVideoDevice(
+      undefined,               // let ZXing pick; it prefers environment when available
+      $video,
+      (result, err) => {
+        if (!isScanning) return;
+        if (result) {
+          const raw = result.getText();
+          const digits = extractDigits(raw);
+          // split-label support (kept): buffer fragments and try to assemble
+          addFragment(digits);
+          const assembled = tryAssemble();
+          const payload = assembled || (digits && digits.length >= 8 ? digits : '');
+          if (!payload) return;
 
-    await reader.decodeFromConstraints(constraints, $video, (result, err) => {
-      if (!isScanning) return;
-      if (result) {
-        // Every successful decode hits this callback
-        const raw = result.getText();
-        const digits = extractDigits(raw);
-        if (!digits) return;
+          // clear buffer to prevent double-firing
+          fragBuffer = [];
+          onScan(payload);
+        }
+        // ignore err; ZXing fires many decode attempts
+      },
+      hints
+    );
 
-        // Buffer fragments and try to assemble 10/13-digit baggage number
-        addFragment(digits);
-        const assembled = tryAssemble();
+    // give the browser a tick to attach the MediaStream to the <video>
+    setTimeout(() => {
+      const stream = $video.srcObject;
+      currentTrack = stream?.getVideoTracks?.()[0] || null;
+    }, 100);
 
-        // If single-code label yields >=10 digits, accept it directly
-        const payload = assembled || (digits.length >= 10 ? digits : '');
-        if (!payload) return;
-
-        // Prevent double-firing on same pair
-        fragBuffer = [];
-        onScan(payload);
-      }
-    }, hints);
-
-    // Cache track for torch control
-    const stream = $video.srcObject;
-    currentTrack = stream?.getVideoTracks?.[0] || null;
-
-    // Let stopScan() reset the reader if available
+    // stash reader so stopScan can reset
     window.__bagvoyage_reader__ = reader;
 
   }catch(e){
