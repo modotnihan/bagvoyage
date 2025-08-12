@@ -299,21 +299,30 @@
       setCamStatus(false);
     }
 
-    function onScan(text){
-      const code = (text||'').trim();
-      if(!code) return;
-      const now = Date.now();
-      if(code===lastRead.code && (now-lastRead.ts)<900) return; // de-dupe
-      lastRead = { code, ts: now };
+   function onScan(text){
+  const code = (text||'').trim();
+  if(!code) return;
+  const now = Date.now();
+  if(code===lastRead.code && (now-lastRead.ts)<900) return; // de-dupe
+  lastRead = { code, ts: now };
 
-      if(mode==='tag'){
-        saveTag(code); vibrate(30); toast('Saved');
-      }else if(mode==='retrieve'){
-        const ok = exists(code);
-        if(ok){ vibrate([40,60,40]); stopScan(); openSheet('ok','MATCH',code,true); }
-        else { vibrate([30,40,30]); openSheet('bad','UNMATCHED',code,false); }
-      }
-    }
+  if(mode==='tag'){
+    saveTag(code);
+    vibrate(30);
+    showSavedTick();             // <-- was: toast('Saved');
+  }else if(mode==='retrieve'){
+    const ok = exists(code);
+    if(ok){ vibrate([40,60,40]); stopScan(); openSheet('ok','MATCH',code,true); }
+    else { vibrate([30,40,30]); openSheet('bad','UNMATCHED',code,false); }
+  }
+}
+
+    function showSavedTick(ms = 900){
+  const el = document.getElementById('savedTick');
+  if(!el) return;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), ms);
+}
 
     // Torch
     document.getElementById('btnTorch').addEventListener('click', async ()=>{
