@@ -367,9 +367,7 @@ async function startScan(m){
         $manualDlg.close();
       });
 
-      // Optional service worker
-      if('serviceWorker' in navigator){
-        navigator.serviceWorker.register('sw.js').catch(()=>{/* ignore */});
+   
       }
     })();
   </script>
