@@ -22,6 +22,7 @@ body{
 /* App frame fills real mobile viewport */
 .app{
   width:min(980px,100%);
+  min-height:100vh;
   height:100dvh;
   background:var(--card);
   border:1px solid var(--outline);
@@ -29,6 +30,8 @@ body{
   overflow:hidden;
   display:flex; flex-direction:column;
 }
+@supports (height: 100svh){ .app{ height:100svh } }
+@supports (-webkit-touch-callout: none){ .app{ min-height:-webkit-fill-available } }
 
 /* Header */
 .hdr{
@@ -110,7 +113,7 @@ body{
   border-top:1px solid var(--outline);
   transform: translateY(110%);  /* hidden by default */
   transition: transform .22s ease;
-  z-index:9999;                  /* make sure it's above all overlays */
+  z-index:10;                   /* above video & overlays */
 }
 .sheet.show{ transform: translateY(0) } /* show when JS adds .show */
 .sheet .row{ display:flex; gap:10px; align-items:center; justify-content:space-between }
@@ -119,7 +122,7 @@ body{
 .pill.bad{ background:rgba(255,79,94,.15); color:#ffc2c7; border:1px solid rgba(255,79,94,.35) }
 #btnContinue{ min-height:44px }  /* thumb-friendly */
 
-/* Toast (Saved) */
+/* Toast (not used for "Saved" anymore, but kept if needed) */
 .toast{
   position:absolute; left:50%; bottom: calc(18px + var(--safe-bottom));
   transform:translateX(-50%);
@@ -129,23 +132,19 @@ body{
 }
 .toast.show{ opacity:1 }
 
-/* Floating success tick */
+/* Saved checkmark tick */
 .saved-tick{
-  position:fixed; top:50%; left:50%;
-  transform:translate(-50%,-50%) scale(0.9);
-  font-size:4rem; line-height:1;
-  color:#00cc88;
-  background:rgba(0,0,0,.35);
-  padding:18px; border-radius:50%;
-  z-index:10000;
-  opacity:0; pointer-events:none;
-  transition:opacity .15s ease, transform .2s ease;
+  position:fixed; left:50%; top:50%;
+  transform:translate(-50%,-50%) scale(0.6);
+  width:120px; height:120px; border-radius:50%;
+  background:rgba(0,204,136,.15);
+  color:#b8ffe8; border:2px solid rgba(0,204,136,.35);
+  display:grid; place-items:center; font-size:64px; font-weight:900;
+  opacity:0; pointer-events:none; z-index:999;
+  transition: opacity .18s ease, transform .18s ease;
 }
 .saved-tick.show{
-  opacity:1; transform:translate(-50%,-50%) scale(1.08);
-}
-@media (max-width:480px){
-  .saved-tick{ font-size:3.2rem; padding:14px }
+  opacity:1; transform:translate(-50%,-50%) scale(1);
 }
 
 /* Splash screen overlay */
@@ -162,26 +161,8 @@ body{
 /* Utilities */
 .hidden{ display:none !important }
 
-/* Small screens: slightly smaller frame corners */
-@media (max-width:420px){
-  .corn{ width:28px; height:28px; border-width:2px }
-}
-
-/* 1) Viewport fallbacks for older iOS / Android */
-.app{
-  min-height: 100vh;          /* fallback */
-  height: 100dvh;             /* modern */
-}
-@supports (height: 100svh){
-  .app{ height: 100svh; }     /* iOS 16+/Chrome new */
-}
-@supports (-webkit-touch-callout: none){
-  /* Older iOS fallback */
-  .app{ min-height: -webkit-fill-available; }
-}
-
-/* 2) Extra-small screens (320–360px wide) */
-@media (max-width: 360px){
+/* Small screens */
+@media (max-width:360px){
   .hdr{ padding:10px 12px }
   .chip{ font-size:11px; padding:5px 8px }
   .btn{ padding:14px 16px; font-size:15px; border-radius:14px }
@@ -191,10 +172,9 @@ body{
   #btnContinue{ min-height:42px }
 }
 
-/* 3) Landscape phones: shrink overlays a bit */
+/* Landscape phones */
 @media (orientation: landscape) and (max-height: 480px){
   .corn{ width:24px; height:24px; border-width:2px }
   .line{ top:12% }
   .toolbar{ padding:8px }
 }
-
