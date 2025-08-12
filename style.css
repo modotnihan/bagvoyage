@@ -1,38 +1,149 @@
+/* ===== Bagvoyage — style.css ===== */
+
+/* Safe area + color tokens */
 :root{
-  /* already have your colors… */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  --bg:#0b1220; --surface:#0f1b33; --card:#101a2e; --outline:#1f2a44;
+  --text:#e7eefc; --muted:#9fb0d0;
+  --primary:#1aa3ff; --ok:#00cc88; --bad:#ff4f5e;
 }
 
-/* Use the modern mobile viewport so the app fills the screen without jumping
-   when the browser chrome collapses/expands */
+*{ box-sizing:border-box }
+html,body{ height:100% }
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  display:grid; place-items:center;
+  overscroll-behavior: contain;
+}
+
+/* App frame fills real mobile viewport (handles collapsing browser chrome) */
 .app{
-  width: min(980px, 100%);
-  height: 100dvh;              /* was min(680px,100vh) */
+  width:min(980px,100%);
+  height:100dvh;
+  background:var(--card);
+  border:1px solid var(--outline);
+  border-radius:20px;
+  overflow:hidden;
+  display:flex; flex-direction:column;
 }
 
-/* Keep home buttons away from the bottom edge */
-.home{
-  padding: 24px 16px calc(24px + var(--safe-bottom));
+/* Header */
+.hdr{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:14px 16px;
+  border-bottom:1px solid var(--outline);
+  font-weight:800;
+  background:linear-gradient(180deg,#0f1b33,#0f1b33e6);
+  padding-top: calc(14px + var(--safe-top)/2);
 }
-.home .stack .btn{
-  width: 100%;
+.brand{ display:flex; align-items:center; gap:10px }
+.brand svg{ width:22px; height:22px }
+.hdr .right{ display:flex; gap:8px; align-items:center }
+.chip{
+  display:inline-flex; align-items:center; gap:8px;
+  background:var(--surface); border:1px solid var(--outline);
+  border-radius:999px; padding:6px 10px; color:var(--muted); font-size:12px;
+}
+.dot{ width:8px; height:8px; border-radius:999px; background:#9ca3af }
+.dot.ok{ background:var(--ok) }
+
+/* Main panes */
+.main{ flex:1; display:grid; grid-template-columns:1fr; grid-template-rows:1fr }
+
+/* Home screen */
+.home{ display:grid; place-items:center; padding:24px 16px calc(24px + var(--safe-bottom)) }
+.home .stack{ display:flex; flex-direction:column; gap:12px; width:min(420px,92%) }
+.btn{
+  appearance:none; border:0; border-radius:16px;
+  padding:16px 18px; font-weight:800; cursor:pointer; font-size:16px
+}
+.btn.primary{ background:var(--primary); color:#001421 }
+.btn.ghost{ background:transparent; color:var(--text); border:1px solid var(--outline) }
+.btn:active{ transform: translateY(1px) }
+
+/* Scanner view */
+.scan{
+  position:relative; background:#000; display:grid;
+  grid-template-rows:auto 1fr auto;
+  padding-bottom: calc(12px + var(--safe-bottom)); /* keep UI clear of gesture bar */
+}
+.scan video{
+  width:100%; height:100%; object-fit:cover; position:relative; z-index:1;
 }
 
-/* Keep the slide-up result sheet clear of the gesture area */
-.sheet{
-  padding: 16px 16px calc(18px + var(--safe-bottom));
-}
-
-/* Give the scanning toolbar a little breathing room on notches */
+/* Top toolbar inside scan */
 .toolbar{
-  padding-top: calc(10px + var(--safe-top) / 2);
+  display:flex; gap:8px; padding:10px;
+  border-bottom:1px solid var(--outline);
+  background:linear-gradient(180deg,rgba(15,27,51,.9),rgba(15,27,51,.75));
+  padding-top: calc(10px + var(--safe-top)/2);
+  z-index:3;
 }
+.toolbar .title{ font-weight:800 }
+.toolbar .spacer{ flex:1 }
+.toolbar .btn{ padding:10px 12px; border-radius:12px }
 
-/* Optional: reduce the scanning frame corners a bit on small screens */
-@media (max-width: 420px){
-  .corn{ width: 28px; height: 28px; border-width: 2px; }
+/* Scan frame overlay */
+.frame{ pointer-events:none; z-index:2 }
+.corn{ position:absolute; width:34px; height:34px; border:3px solid rgba(255,255,255,.9); opacity:.9 }
+.tl{ left:10%; top:14%; border-right:none; border-bottom:none; border-radius:6px 0 0 0 }
+.tr{ right:10%; top:14%; border-left:none; border-bottom:none; border-radius:0 6px 0 0 }
+.bl{ left:10%; bottom:14%; border-right:none; border-top:none; border-radius:0 0 0 6px }
+.br{ right:10%; bottom:14%; border-left:none; border-top:none; border-radius:0 0 6px 0 }
+.line{
+  position:absolute; left:12%; right:12%; top:16%; height:2px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.95),transparent);
+  box-shadow:0 0 18px rgba(255,255,255,.8);
+  animation:sweep 2.2s linear infinite;
 }
-.footer, .bottom-actions{
-  padding-bottom: calc(12px + var(--safe-bottom));
+@keyframes sweep{ from{ transform:translateY(0) } to{ transform:translateY(58vh) } }
+
+/* Result sheet (MATCH/UNMATCHED) */
+.sheet{
+  position:absolute; inset:auto 0 0 0;
+  background:rgba(15,27,51,.96);
+  border-top-left-radius:18px; border-top-right-radius:18px;
+  padding:16px 16px calc(18px + var(--safe-bottom));
+  border-top:1px solid var(--outline);
+  transform: translateY(110%);  /* hidden by default */
+  transition: transform .22s ease;
+  z-index:10;                   /* above video & overlays */
+}
+.sheet.show{ transform: translateY(0) } /* show when JS adds .show */
+.sheet .row{ display:flex; gap:10px; align-items:center; justify-content:space-between }
+.pill{ display:inline-block; padding:8px 12px; border-radius:999px; font-weight:800 }
+.pill.ok{ background:rgba(0,204,136,.15); color:#b8ffe8; border:1px solid rgba(0,204,136,.35) }
+.pill.bad{ background:rgba(255,79,94,.15); color:#ffc2c7; border:1px solid rgba(255,79,94,.35) }
+#btnContinue{ min-height:44px }  /* thumb-friendly */
+
+/* Toast (Saved) */
+.toast{
+  position:absolute; left:50%; bottom: calc(18px + var(--safe-bottom));
+  transform:translateX(-50%);
+  background:rgba(16,26,46,.98);
+  border:1px solid var(--outline); padding:10px 12px; border-radius:12px;
+  font-weight:700; opacity:0; transition:opacity .18s ease; z-index:6;
+}
+.toast.show{ opacity:1 }
+
+/* Splash screen overlay */
+#splash{
+  position:fixed; inset:0; display:grid; place-items:center;
+  background: radial-gradient(800px 600px at 30% 20%, rgba(26,163,255,.25), transparent 40%), #0b1220;
+  z-index:9999; transition: opacity .25s ease;
+}
+#splash.hidden{ opacity:0; pointer-events:none }
+#splash .wrap{ text-align:center }
+#splash img{ width:72px; height:72px; display:block; margin:0 auto 12px }
+#splash h1{ margin:0; font-size:20px; letter-spacing:.5px }
+
+/* Utilities */
+.hidden{ display:none !important }
+
+/* Small screens: slightly smaller frame corners */
+@media (max-width:420px){
+  .corn{ width:28px; height:28px; border-width:2px }
 }
