@@ -11,9 +11,6 @@
   <link rel="apple-touch-icon" href="img/bagvoyage-icon-180.png" />
   <link rel="manifest" href="manifest.json" />
 
-  <!-- Styles -->
-  <link rel="stylesheet" href="style.css" />
-
   <!-- Theme Colors -->
   <meta name="theme-color" content="#1aa3ff" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -21,6 +18,9 @@
   <!-- Fonts & ZXing -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <script src="https://unpkg.com/@zxing/browser@latest"></script>
+
+  <!-- App CSS -->
+  <link rel="stylesheet" href="style.css" />
 
   <script>
     // Register SW
@@ -30,7 +30,7 @@
         .catch(err => console.warn('SW registration failed', err));
     }
 
-    // ---------- Helpers (baggage parsing) ----------
+    // ---------- Helpers ----------
     function extractDigits(s){ return (s && s.match(/\d+/g)) ? s.match(/\d+/g).join('') : ''; }
     function normalizeBaggageCode(s){
       const d = extractDigits(s);
@@ -39,11 +39,8 @@
     // Split-label assembly (combine two Code128 halves within 1s)
     const FRAG_WINDOW_MS = 1000;
     let fragBuffer = []; // {digits, ts}
-    function addFragment(d){
-      const now = Date.now();
-      fragBuffer.push({digits:d, ts:now});
-      fragBuffer = fragBuffer.filter((f,i,a)=> now - f.ts <= FRAG_WINDOW_MS && (i===0 || f.digits!==a[i-1].digits));
-    }
+    function addFragment(d){ const now=Date.now(); fragBuffer.push({digits:d, ts:now});
+      fragBuffer = fragBuffer.filter((f,i,a)=> now-f.ts<=FRAG_WINDOW_MS && (i===0 || f.digits!==a[i-1].digits)); }
     function tryAssemble(){
       if (fragBuffer.length < 2) return '';
       const a = fragBuffer[fragBuffer.length-2].digits;
@@ -67,16 +64,15 @@
     </div>
   </div>
 
-  <!-- Floating success tick -->
+  <!-- Saved ✓ overlay -->
   <div id="savedTick" class="saved-tick" aria-hidden="true">✔</div>
 
   <div class="app" role="application" aria-label="Bagvoyage">
     <div class="hdr">
       <div class="brand">
-        <!-- Simple suitcase + check icon -->
+        <!-- Simple suitcase + check -->
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <rect x="5" y="7" width="14" height="12" rx="2" ry="2" fill="none" stroke="#1aa3ff" stroke-width="2"/>
-          <!-- fixed handle path -->
           <path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" fill="none" stroke="#1aa3ff" stroke-width="2"/>
           <path d="M8 13l2.2 2.2L16 9.5" fill="none" stroke="#00cc88" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
@@ -116,9 +112,8 @@
         <div style="margin:8px 0 6px;font-weight:800;font-size:18px" id="sheetTitle">Result</div>
         <div style="font-family:ui-monospace,Menlo,Consolas,monospace" id="sheetCode"></div>
       </div>
-
-      <!-- Optional toast (guarded in JS if missing) -->
-      <div id="toast" class="toast" aria-live="polite"></div>
+      <!-- optional toast kept for future use -->
+      <div id="toast" class="toast">Saved</div>
     </div>
   </div>
 
@@ -135,7 +130,7 @@
   </dialog>
 
   <script>
-    // Hide splash when app is ready
+    // Splash hide
     window.addEventListener('load', () => {
       setTimeout(() => document.getElementById('splash').classList.add('hidden'), 250);
     });
@@ -166,30 +161,20 @@
       const $sheetTitle = document.getElementById('sheetTitle');
       const $sheetCode = document.getElementById('sheetCode');
       const $btnContinue = document.getElementById('btnContinue');
+      const $toast = document.getElementById('toast');
       const $dbDot = document.getElementById('dbDot');
       const $dbLabel = document.getElementById('dbLabel');
       const $camDot = document.getElementById('camDot');
       const $camLabel = document.getElementById('camLabel');
       const $manualDlg = document.getElementById('manualDialog');
       const $manualInput = document.getElementById('manualInput');
+      const $savedTick = document.getElementById('savedTick');
 
-      // Status hint
       setTimeout(()=>{ $dbDot.className='dot ok'; $dbLabel.textContent='DB: online (local demo)'; }, 300);
 
-      // UI helpers
       const vibrate = p => { try{ navigator.vibrate && navigator.vibrate(p) }catch{} };
-      const toast = (msg, ms=800) => {
-        const $toast = document.getElementById('toast'); // guard if missing
-        if(!$toast) return;
-        $toast.textContent=msg; $toast.classList.add('show');
-        setTimeout(()=> $toast.classList.remove('show'), ms);
-      };
-      function showSavedTick(ms = 900){
-        const el = document.getElementById('savedTick');
-        if(!el) return;
-        el.classList.add('show');
-        setTimeout(() => el.classList.remove('show'), ms);
-      }
+      const toast = (msg, ms=800) => { $toast.textContent=msg; $toast.classList.add('show'); setTimeout(()=>$toast.classList.remove('show'), ms); };
+
       function openSheet(kind, title, code, wait){
         $pill.className = 'pill ' + (kind==='ok'?'ok':'bad');
         $pill.textContent = kind==='ok' ? 'MATCH' : 'UNMATCHED';
@@ -201,6 +186,24 @@
       function showScan(m){ mode=m; $title.textContent = m==='tag'?'Tag — scanning':'Retrieve — scan to verify'; $home.classList.add('hidden'); $scan.classList.remove('hidden'); }
       function setCamStatus(active){ if(active){ $camDot.className='dot ok'; $camLabel.textContent='Camera: active'; } else { $camDot.className='dot'; $camLabel.textContent='Camera: idle'; } }
 
+      function showSavedTick(ms = 900){
+        if(!$savedTick) return;
+        $savedTick.classList.add('show');
+        setTimeout(()=> $savedTick.classList.remove('show'), ms);
+      }
+
+      async function setTorch(on){
+        if (!currentTrack) return;
+        try{
+          const caps = currentTrack.getCapabilities && currentTrack.getCapabilities();
+          if (caps && 'torch' in caps) {
+            await currentTrack.applyConstraints({ advanced: [{ torch: !!on }] });
+          } else {
+            // iOS typically doesn't support torch; ignore.
+          }
+        }catch(e){ /* ignore */ }
+      }
+
       async function startScan(m){
         if (isScanning) return;
         showScan(m);
@@ -211,14 +214,21 @@
         if (currentTrack) { try{ currentTrack.stop(); }catch{} currentTrack = null; }
 
         try{
-          // 1) Start camera (works for both native + ZXing paths)
+          // Start camera (works for both native + ZXing paths)
           const constraints = {
-            video: { facingMode:{ ideal:'environment' }, width:{ ideal:1920 }, height:{ ideal:1080 } },
+            video: {
+              facingMode:{ ideal:'environment' },
+              width:{ ideal:1920 }, height:{ ideal:1080 },
+              frameRate:{ ideal:30 }
+            },
             audio: false
           };
           const stream = await navigator.mediaDevices.getUserMedia(constraints);
           $video.srcObject = stream;
           await $video.play().catch(()=>{});
+          if ($video.readyState < 2) {
+            await new Promise(res => $video.addEventListener('loadedmetadata', res, { once:true }));
+          }
           currentTrack = stream.getVideoTracks()[0] || null;
 
           // Unified handler for decoded strings
@@ -236,32 +246,37 @@
             onScan(payload);
           };
 
-          // 2) Native fast path (Chrome Android)
-          const hasNative = 'BarcodeDetector' in window && typeof BarcodeDetector === 'function';
-          if (hasNative) {
+          // Prefer native on Android; FORCE ZXing on iOS
+          const ua = navigator.userAgent || '';
+          const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+          if (!isIOS && 'BarcodeDetector' in window && typeof BarcodeDetector === 'function') {
             let supported = [];
             try { supported = await BarcodeDetector.getSupportedFormats(); } catch {}
             const wanted = ['qr_code','code_128','code_39','itf','ean_13','ean_8','upc_a','pdf417','data_matrix','aztec'];
             const formats = wanted.filter(f => supported.includes(f));
-            const detector = new BarcodeDetector({ formats });
 
-            const loop = async () => {
-              if (!isScanning) return;
-              if (Date.now() < scanCooldownUntil) { scanRaf = requestAnimationFrame(loop); return; }
-              try{
-                const codes = await detector.detect($video);
-                if (codes && codes.length) handleDecode(codes[0].rawValue);
-              }catch(e){
-                console.warn('BarcodeDetector failed, falling back to ZXing:', e);
-                return fallbackToZXing(handleDecode);
-              }
+            if (formats.length) {
+              const detector = new BarcodeDetector({ formats });
+              const loop = async () => {
+                if (!isScanning) return;
+                if (Date.now() < scanCooldownUntil) { scanRaf = requestAnimationFrame(loop); return; }
+                try{
+                  const codes = await detector.detect($video);
+                  if (codes && codes.length) handleDecode(codes[0].rawValue);
+                }catch(e){
+                  console.warn('Native detect failed, falling back to ZXing:', e);
+                  return fallbackToZXing(handleDecode);
+                }
+                scanRaf = requestAnimationFrame(loop);
+              };
               scanRaf = requestAnimationFrame(loop);
-            };
-            scanRaf = requestAnimationFrame(loop);
-            return; // native path running
+              return; // native path running
+            }
           }
 
-          // 3) ZXing fallback
+          // ZXing on iOS (and as fallback)
           await fallbackToZXing(handleDecode);
 
         }catch(e){
@@ -277,7 +292,6 @@
           const ZXB = window.ZXingBrowser || {};
           const ReaderClass = ZXB.BrowserMultiFormatReader;
           if (!ReaderClass) throw new Error('ZXing library not loaded');
-
           const reader = new ReaderClass();
 
           let hints;
@@ -300,7 +314,6 @@
             hints
           );
 
-          // cache for torch
           const s = $video.srcObject;
           currentTrack = s?.getVideoTracks?.[0] || currentTrack;
           window.__bagvoyage_reader__ = reader;
@@ -311,9 +324,12 @@
         if(!isScanning) return;
         isScanning = false;
         if (scanRaf) { cancelAnimationFrame(scanRaf); scanRaf = null; }
-        try{ window.__bagvoyage_reader__?.reset?.(); }catch{}
-        if (currentTrack) { try{ currentTrack.stop(); }catch{} currentTrack = null; }
-        setCamStatus(false);
+        // turn torch off first, then stop track & reset reader
+        setTorch(false).finally(()=>{
+          try{ window.__bagvoyage_reader__?.reset?.(); }catch{}
+          if (currentTrack) { try{ currentTrack.stop(); }catch{} currentTrack = null; }
+          setCamStatus(false);
+        });
       }
 
       function onScan(text){
@@ -326,7 +342,7 @@
         if(mode==='tag'){
           saveTag(code);
           vibrate(30);
-          showSavedTick(); // visual tick instead of "Saved" toast
+          showSavedTick(); // ✓ overlay instead of toast
         }else if(mode==='retrieve'){
           const ok = exists(code);
           if(ok){ vibrate([40,60,40]); stopScan(); openSheet('ok','MATCH',code,true); }
@@ -334,21 +350,33 @@
         }
       }
 
-      // Torch
+      // Torch toggle
       document.getElementById('btnTorch').addEventListener('click', async ()=>{
         if(!currentTrack) return;
         try{
           const caps = currentTrack.getCapabilities && currentTrack.getCapabilities();
-          if(caps && caps.torch){
+          if(caps && 'torch' in caps){
             const next = !currentTrack.getSettings().torch;
             await currentTrack.applyConstraints({ advanced:[{ torch: next }] });
-          }else{ toast('Torch not supported', 1000); }
+          }else{
+            toast('Torch not supported', 1000);
+          }
         }catch{ toast('Torch control failed', 1000); }
       });
 
       // Continue & Exit
       $btnContinue.addEventListener('click', ()=>{ $sheet.classList.remove('show'); startScan('retrieve'); });
-      document.getElementById('btnStop').addEventListener('click', ()=>{ stopScan(); showHome(); });
+      document.getElementById('btnStop').addEventListener('click', async ()=>{
+        await setTorch(false);
+        stopScan();
+        showHome();
+      });
+
+      // Page/tab leave: ensure torch is off and camera stops (iOS quirk)
+      window.addEventListener('pagehide', () => { setTorch(false).finally(stopScan); });
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) { setTorch(false).finally(stopScan); }
+      });
 
       // Home buttons
       document.getElementById('btnTag').addEventListener('click', ()=> startScan('tag'));
