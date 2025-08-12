@@ -2,7 +2,7 @@ self.addEventListener('install', e => self.skipWaiting());
 self.addEventListener('activate', e => self.clients.claim());
 // (Add caching later if needed)
 // service-worker.js
-const CACHE_VERSION = 'v1.0.2';
+const CACHE_VERSION = 'v1.0.3';
 const CACHE_NAME = `bagvoyage-${CACHE_VERSION}`;
 const PRECACHE = [
   '/',                 // if deploying at root; change to '/Bagvoyage/' on GitHub Pages
