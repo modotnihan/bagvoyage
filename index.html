@@ -71,7 +71,7 @@
       <div class="toolbar">
         <div class="title" id="modeTitle">Mode</div>
         <div class="spacer"></div>
-        <button id="btnTorch" class="btn ghost" title="Toggle torch" aria-pressed="false">Torch</button>
+        <button id="btnTorch" class="btn ghost" title="Toggle torch" aria-pressed="false" disabled>Torch</button>
         <button id="btnStop" class="btn ghost" title="Exit scanning">Exit</button>
       </div>
 
@@ -113,25 +113,24 @@
   </dialog>
 
   <script>
-    // --- Service Worker (keep your existing file as-is) ---
+    /* ------------------ SW register ------------------ */
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js')
         .then(() => console.log('SW registered'))
         .catch(err => console.warn('SW registration failed', err));
     }
 
-    // --- Splash hide ---
+    /* ------------------ Splash hide ------------------ */
     window.addEventListener('load', () => {
       setTimeout(() => document.getElementById('splash').classList.add('hidden'), 250);
     });
 
-    // ---------- Helpers ----------
+    /* ------------------ Helpers ------------------ */
     function extractDigits(s){ return (s && s.match(/\d+/g)) ? s.match(/\d+/g).join('') : ''; }
     function normalizeBaggageCode(s){
       const d = extractDigits(s);
       return (d.length === 10 || d.length === 13) ? d : '';
     }
-
     // Split-label assembly (combine two Code128 halves within 1s)
     const FRAG_WINDOW_MS = 1000;
     let fragBuffer = []; // {digits, ts}
@@ -200,16 +199,118 @@
       const $savedTick = document.getElementById('savedTick');
       const $scannerInput = document.getElementById('scannerInput');
       const $ptr = document.getElementById('ptrIndicator');
+      const $torchBtn = document.getElementById('btnTorch');
 
-      // Status
+      // Status UI
       setTimeout(()=>{ $dbDot.className='dot ok'; $dbLabel.textContent='DB: online (local)'; }, 300);
 
       const vibrate = p => { try{ navigator.vibrate && navigator.vibrate(p) }catch{} };
       const toast = (msg, ms=800) => { $toast.textContent=msg; $toast.classList.add('show'); setTimeout(()=>$toast.classList.remove('show'), ms); };
 
-      // ---- Result sheet (singleton) ----
+      /* ---------- Torch capability & control ---------- */
+      async function hasImageCaptureTorch(track){
+        try {
+          if (!('ImageCapture' in window) || !track || track.kind !== 'video') return false;
+          const ic = new ImageCapture(track);
+          const caps = await ic.getPhotoCapabilities().catch(() => null);
+          return !!(caps && Array.isArray(caps.fillLightMode) && caps.fillLightMode.includes('torch'));
+        } catch { return false; }
+      }
+      function hasTrackTorch(track){
+        try {
+          const caps = track?.getCapabilities?.();
+          return !!(caps && 'torch' in caps);
+        } catch { return false; }
+      }
+      async function setTorch(on){
+        if (!currentTrack) return false;
+        try{
+          if (await hasImageCaptureTorch(currentTrack)) {
+            const ic = new ImageCapture(currentTrack);
+            await ic.setOptions({ torch: !!on });
+            isTorchOn = !!on;
+          } else if (hasTrackTorch(currentTrack)) {
+            await currentTrack.applyConstraints({ advanced: [{ torch: !!on }] });
+            isTorchOn = !!on;
+          } else {
+            isTorchOn = false;
+            return false;
+          }
+          $torchBtn.textContent = isTorchOn ? 'Torch Off' : 'Torch On';
+          $torchBtn.setAttribute('aria-pressed', String(isTorchOn));
+          return true;
+        } catch (e){
+          console.warn('Torch control failed:', e);
+          return false;
+        }
+      }
+      async function updateTorchUI(){
+        if (!currentTrack) { $torchBtn.disabled = true; $torchBtn.title = 'Camera not ready'; return; }
+        const supported = await hasImageCaptureTorch(currentTrack) || hasTrackTorch(currentTrack);
+        $torchBtn.disabled = !supported;
+        $torchBtn.title = supported ? 'Toggle torch' : 'Torch not supported by this camera';
+        $torchBtn.setAttribute('aria-disabled', String(!supported));
+        if (!supported) {
+          isTorchOn = false;
+          $torchBtn.textContent = 'Torch';
+          $torchBtn.setAttribute('aria-pressed', 'false');
+        }
+      }
+
+      /* ---------- Camera selection (prefer torch-capable back camera) ---------- */
+      async function getBestBackCameraStream(){
+        // Provisional stream to unlock device labels
+        const provisional = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' } }, audio: false
+        }).catch(() => null);
+
+        const devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+        const candidates = [];
+        for (const d of devices) {
+          const label = (d.label || '').toLowerCase();
+          const isBack = /back|rear|environment/.test(label);
+          candidates.push({ deviceId: d.deviceId, score: isBack ? 2 : 1, label });
+        }
+        candidates.sort((a,b) => b.score - a.score);
+
+        for (const c of candidates) {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              deviceId: { exact: c.deviceId },
+              width:{ ideal:1280, min:960 },
+              height:{ ideal:720,  min:540 },
+              aspectRatio:{ ideal:16/9 },
+              frameRate:{ ideal:30,  min:15 }
+            },
+            audio:false
+          }).catch(() => null);
+
+          if (!stream) continue;
+
+          const track = stream.getVideoTracks()[0];
+          const supports = hasTrackTorch(track) || await hasImageCaptureTorch(track);
+          if (supports) {
+            if (provisional && provisional !== stream) provisional.getTracks().forEach(t => t.stop());
+            return stream;
+          }
+          stream.getTracks().forEach(t => t.stop());
+        }
+
+        if (provisional) return provisional;
+
+        return navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode:{ ideal:'environment' },
+            width:{ ideal:1280, min:960 }, height:{ ideal:720, min:540 },
+            aspectRatio:{ ideal:16/9 }, frameRate:{ ideal:30, min:15 }
+          },
+          audio:false
+        });
+      }
+
+      /* ---------- Result sheet (singleton) ---------- */
       function openSheet(kind, title, code, wait){
-        // Reset/ensure single active listener on Continue
+        // Reset Continue listener
         $btnContinue.replaceWith($btnContinue.cloneNode(true));
         const freshBtn = document.getElementById('btnContinue');
         freshBtn.addEventListener('click', onContinue, { once:true });
@@ -226,13 +327,20 @@
         if (!wait) setTimeout(()=> $sheet.classList.remove('show'), 900);
         if (wait) freshBtn.focus();
       }
-
       function hideSheet(){
         $sheet.classList.remove('show');
-        // also reset Continue guard
         isContinuing = false;
       }
 
+      /* ---------- UI helpers ---------- */
+      function setCamStatus(active){
+        if(active){ $camDot.className='dot ok'; $camLabel.textContent='Camera: active'; }
+        else { $camDot.className='dot'; $camLabel.textContent='Camera: idle'; }
+      }
+      function showSavedTick(ms = 900){
+        $savedTick.classList.add('show');
+        setTimeout(()=> $savedTick.classList.remove('show'), ms);
+      }
       function showHome(){
         $scan.classList.add('hidden');
         $home.classList.remove('hidden');
@@ -241,71 +349,25 @@
         $scan.classList.remove('active');
         hideSheet();
       }
-
       function showScan(m){
         mode=m;
         $title.textContent = m==='tag'?'Tag — scanning':'Retrieve — scan to verify';
         $home.classList.add('hidden');
         $scan.classList.remove('hidden');
         $scan.classList.add('active');
-        // keep the hidden input focused for HID scanners
-        focusScannerInput();
+        focusScannerInput(); // for HID scanners
       }
 
-      function setCamStatus(active){
-        if(active){ $camDot.className='dot ok'; $camLabel.textContent='Camera: active'; }
-        else { $camDot.className='dot'; $camLabel.textContent='Camera: idle'; }
-      }
-
-      function showSavedTick(ms = 900){
-        $savedTick.classList.add('show');
-        setTimeout(()=> $savedTick.classList.remove('show'), ms);
-      }
-
-      // ---- Torch control (ImageCapture preferred) ----
-      async function setTorch(on){
-        if (!currentTrack) return;
-        try{
-          if ('ImageCapture' in window && currentTrack.kind === 'video') {
-            const ic = new ImageCapture(currentTrack);
-            await ic.setOptions({ torch: !!on });
-            isTorchOn = !!on;
-          } else if (currentTrack.applyConstraints) {
-            const caps = currentTrack.getCapabilities?.();
-            if (caps?.torch) {
-              await currentTrack.applyConstraints({ advanced: [{ torch: !!on }] });
-              isTorchOn = !!on;
-            }
-          }
-          document.getElementById('btnTorch').textContent = isTorchOn ? 'Torch Off' : 'Torch On';
-          document.getElementById('btnTorch').setAttribute('aria-pressed', String(isTorchOn));
-        }catch(e){
-          // silently ignore on unsupported devices
-        }
-      }
-
-      // ---- Camera start/stop ----
+      /* ---------- Camera start/stop ---------- */
       async function startScan(m){
         if (isScanning) return;
         showScan(m);
         isScanning = true;
         setCamStatus(true);
 
-        // Stop any previous
         await stopCamera();
-
         try{
-          const constraints = {
-            video: {
-              facingMode:{ ideal:'environment' },
-              width:{ ideal:1280, min:960 },
-              height:{ ideal:720,  min:540 },
-              aspectRatio: { ideal: 16/9 },
-              frameRate:{ ideal:30, min:15 }
-            },
-            audio: false
-          };
-          const stream = await navigator.mediaDevices.getUserMedia(constraints);
+          const stream = await getBestBackCameraStream();
           $video.srcObject = stream;
           await $video.play().catch(()=>{});
           if ($video.readyState < 2) {
@@ -313,7 +375,9 @@
           }
           currentTrack = stream.getVideoTracks()[0] || null;
 
-          // ZXing (browser)
+          await updateTorchUI();
+
+          // ZXing init
           const ZXB = window.ZXingBrowser || {};
           const ReaderClass = ZXB.BrowserMultiFormatReader;
           if (!ReaderClass) throw new Error('ZXing library not loaded');
@@ -362,21 +426,18 @@
       }
 
       async function stopCamera(){
-        try{
-          await setTorch(false); // turn off torch first on iOS
-        }catch{}
-        try{
-          window.__bagvoyage_reader__?.reset?.();
-        }catch{}
+        try { await setTorch(false); } catch {}
+        try { window.__bagvoyage_reader__?.reset?.(); } catch {}
         const stream = $video.srcObject;
         if (stream) {
-          const [track] = stream.getVideoTracks();
-          try{ track && track.stop(); }catch{}
+          const tracks = stream.getVideoTracks();
+          tracks.forEach(t => { try { t.stop(); } catch {} });
         }
         $video.pause();
         $video.srcObject = null;
         currentTrack = null;
         setCamStatus(false);
+        await updateTorchUI().catch(()=>{});
       }
 
       function stopScan(){
@@ -386,7 +447,7 @@
         stopCamera();
       }
 
-      // ---- Scan handler ----
+      /* ---------- Scan handler ---------- */
       function onScan(text){
         const code = (text||'').trim();
         if(!code) return;
@@ -411,7 +472,7 @@
         }
       }
 
-      // ---- Continue flow (guarded) ----
+      /* ---------- Continue flow (guarded) ---------- */
       async function onContinue(e){
         e?.preventDefault?.();
         if (isContinuing) return;
@@ -428,29 +489,30 @@
         }
       }
 
-      // ---- Torch toggle ----
-      document.getElementById('btnTorch').addEventListener('click', async ()=>{
-        await setTorch(!isTorchOn);
+      /* ---------- Torch toggle ---------- */
+      $torchBtn.addEventListener('click', async ()=>{
+        const ok = await setTorch(!isTorchOn);
+        if (!ok) updateTorchUI();
       });
 
-      // ---- Exit ----
+      /* ---------- Exit ---------- */
       document.getElementById('btnStop').addEventListener('click', async ()=>{
         await stopScan();
         showHome();
       });
 
-      // ---- Page/tab lifecycle (iOS safety) ----
+      /* ---------- Lifecycle (iOS/Android safety) ---------- */
       window.addEventListener('pagehide', () => { stopScan(); });
       document.addEventListener('visibilitychange', () => {
         if (document.hidden) stopScan();
         else if (mode) startScan(mode);
       });
 
-      // ---- Home buttons ----
+      /* ---------- Home buttons ---------- */
       document.getElementById('btnTag').addEventListener('click', ()=> startScan('tag'));
       document.getElementById('btnRetrieve').addEventListener('click', ()=> startScan('retrieve'));
 
-      // ---- Manual entry ----
+      /* ---------- Manual entry ---------- */
       document.getElementById('btnManual').addEventListener('click', ()=>{
         $manualInput.value='';
         $manualDlg.showModal();
@@ -464,7 +526,7 @@
         $manualDlg.close();
       });
 
-      // ---- HID scanner support (keyboard wedge) ----
+      /* ---------- HID scanner (keyboard wedge) ---------- */
       function focusScannerInput(){
         const el = $scannerInput;
         if (document.activeElement !== el) el.focus();
@@ -472,7 +534,6 @@
       window.addEventListener('click', focusScannerInput);
       window.addEventListener('keydown', focusScannerInput);
 
-      // Treat Enter as end-of-scan; buffer fallback if no Enter suffix
       let burstTimer;
       const BURST_IDLE_MS = 60;
       $scannerInput.addEventListener('keydown', (e)=>{
@@ -491,7 +552,7 @@
         }
       });
 
-      // ---- Pull to refresh (in-app) ----
+      /* ---------- Pull to refresh (in-app) ---------- */
       (function enablePullToRefresh(){
         const THRESHOLD = 70;
         let startY = 0, pulling = false, activated = false;
