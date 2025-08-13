@@ -134,7 +134,7 @@ body{
 .sheet .row{ display:flex; gap:10px; align-items:center; justify-content:space-between }
 .pill{ display:inline-block; padding:8px 12px; border-radius:999px; font-weight:800 }
 .pill.ok{ background:rgba(0,204,136,.15); color:#b8ffe8; border:1px solid rgba(0,204,136,.35) }
-.pill.bad{ background:rgba(255,79,94,.15); color:#ffc2c7; border:1px solid rgba(255,79,94,.35) }
+.pill.bad{ background:rgba(255,79,94,.15); color:#ffc2c7; border:1px solid rgba(255,255,255,.35) }
 #btnContinue{ min-height:44px }
 .sheet-title{ margin:8px 0 6px; font-weight:800; font-size:18px }
 .sheet-code{ font-family:ui-monospace,Menlo,Consolas,monospace }
