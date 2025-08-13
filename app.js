@@ -397,50 +397,45 @@ function tryAssemble(){
   }
 
   /* ---------- Scan handler ---------- */
-  function onScan(text){
-    const code = (text||'').trim();
-    if(!code) return;
-    const now = Date.now();
-    if(code===lastRead.code && (now-lastRead.ts)<900) return; // de-dupe
-    lastRead = { code, ts: now };
+ /* ---------- Scan handler ---------- */
+async function onScan(text){
+  const code = (text||'').trim();
+  if(!code) return;
+  const now = Date.now();
+  if(code===lastRead.code && (now-lastRead.ts)<900) return; // de-dupe
+  lastRead = { code, ts: now };
 
-    if(mode==='tag'){
-      saveTag(code);
-      vibrate(30);
-      showSavedTick();
-    }else if(mode==='retrieve'){
-      const ok = exists(code);
-      if(ok){
-        vibrate([40,60,40]);
-        stopCamera(); // pause camera while showing result
-        openSheet('ok','MATCH',code,true);
-      } else {
-        vibrate([30,40,30]);
-        openSheet('bad','UNMATCHED',code,false);
-      }
+  if(mode==='tag'){
+    saveTag(code);
+    vibrate(30);
+    showSavedTick();
+  }else if(mode==='retrieve'){
+    const ok = exists(code);
+    if(ok){
+      vibrate([40,60,40]);
+      // IMPORTANT: avoid race with Continue → startScan
+      isScanning = false;           // allow startScan to proceed later
+      await stopCamera();           // wait until tracks are fully stopped
+      openSheet('ok','MATCH',code,true); // show Continue
+    } else {
+      vibrate([30,40,30]);
+      openSheet('bad','UNMATCHED',code,false); // auto-hide
     }
   }
+}
+
 
  /* ---------- Continue flow (simple & robust) ---------- */
+/* ---------- Continue flow (simple & robust) ---------- */
 async function onContinue(e){
   if (e && e.preventDefault) e.preventDefault();
-
-  // Close the sheet first
   hideSheet();
-
-  // Make sure any running detector loops are stopped (no-ops if not present)
-  try { if (window.__bagvoyage_native_running__) window.__bagvoyage_native_running__(); } catch {}
-  try { if (window.__bagvoyage_reader__ && window.__bagvoyage_reader__.reset) window.__bagvoyage_reader__.reset(); } catch {}
-
-  // Allow startScan to proceed
-  isScanning = false;
-
-  // Stay in retrieve mode
+  // (native/ZXing loops will be restarted by startScan)
+  isScanning = false;                 // ensure startScan won't early-return
   if (mode !== 'retrieve') mode = 'retrieve';
-
-  // Restart scanning immediately
-  await startScan('retrieve');
+  await startScan('retrieve');        // restart scanning immediately
 }
+
 
 
   /* ---------- Torch toggle ---------- */
