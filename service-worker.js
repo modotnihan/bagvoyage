@@ -1,5 +1,5 @@
 // ===== Bagvoyage — service-worker.js =====
-const CACHE_VERSION = 'v1.2.0';
+const CACHE_VERSION = 'v1.2.1';
 const CACHE_NAME = `bagvoyage-${CACHE_VERSION}`;
 
 const PRECACHE = [
