@@ -19,6 +19,19 @@ body{
   overscroll-behavior: contain;
 }
 
+/* Pull-to-refresh indicator */
+#ptrIndicator {
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 0; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  transition: height 120ms ease;
+  background: rgba(0,0,0,0.04);
+  font: 600 14px/1 Inter, system-ui, sans-serif;
+  color: var(--muted);
+  z-index: 10000;
+}
+#ptrIndicator.active { height: 48px; }
+
 /* App frame fills real mobile viewport */
 .app{
   width:min(980px,100%);
@@ -66,6 +79,7 @@ body{
 .btn.primary{ background:var(--primary); color:#001421 }
 .btn.ghost{ background:transparent; color:var(--text); border:1px solid var(--outline) }
 .btn:active{ transform: translateY(1px) }
+.btn:focus-visible{ outline:2px solid var(--primary); outline-offset:2px }
 
 /* Scanner view */
 .scan{
@@ -99,33 +113,33 @@ body{
 .line{
   position:absolute; left:12%; right:12%; top:16%; height:2px;
   background:linear-gradient(90deg,transparent,rgba(255,255,255,.95),transparent);
-  will-change: transform; /* Hint to GPU */
-  animation:sweep 2.2s linear infinite paused; /* Pause by default */
+  will-change: transform;
+  animation:sweep 2.2s linear infinite paused;
 }
-.scan.active .line {
-  animation-play-state: running; /* Run only when scanning */
-}
+.scan.active .line { animation-play-state: running; }
 @keyframes sweep{ from{ transform:translateY(0) } to{ transform:translateY(58vh) } }
 
-/* Result sheet (MATCH/UNMATCHED) */
+/* Result sheet */
 .sheet{
   position:absolute; inset:auto 0 0 0;
   background:rgba(15,27,51,.96);
   border-top-left-radius:18px; border-top-right-radius:18px;
   padding:16px 16px calc(18px + var(--safe-bottom));
   border-top:1px solid var(--outline);
-  transform: translateY(110%);  /* hidden by default */
+  transform: translateY(110%);
   transition: transform .22s ease;
-  z-index:10;                   /* above video & overlays */
+  z-index:10;
 }
-.sheet.show{ transform: translateY(0) } /* show when JS adds .show */
+.sheet.show{ transform: translateY(0) }
 .sheet .row{ display:flex; gap:10px; align-items:center; justify-content:space-between }
 .pill{ display:inline-block; padding:8px 12px; border-radius:999px; font-weight:800 }
 .pill.ok{ background:rgba(0,204,136,.15); color:#b8ffe8; border:1px solid rgba(0,204,136,.35) }
 .pill.bad{ background:rgba(255,79,94,.15); color:#ffc2c7; border:1px solid rgba(255,79,94,.35) }
-#btnContinue{ min-height:44px }  /* thumb-friendly */
+#btnContinue{ min-height:44px }
+.sheet-title{ margin:8px 0 6px; font-weight:800; font-size:18px }
+.sheet-code{ font-family:ui-monospace,Menlo,Consolas,monospace }
 
-/* Toast (not used for "Saved" anymore, but kept if needed) */
+/* Toast */
 .toast{
   position:absolute; left:50%; bottom: calc(18px + var(--safe-bottom));
   transform:translateX(-50%);
@@ -146,9 +160,7 @@ body{
   opacity:0; pointer-events:none; z-index:999;
   transition: opacity .18s ease, transform .18s ease;
 }
-.saved-tick.show{
-  opacity:1; transform:translate(-50%,-50%) scale(1);
-}
+.saved-tick.show{ opacity:1; transform:translate(-50%,-50%) scale(1); }
 
 /* Splash screen overlay */
 #splash{
@@ -160,6 +172,10 @@ body{
 #splash .wrap{ text-align:center }
 #splash img{ width:72px; height:72px; display:block; margin:0 auto 12px }
 #splash h1{ margin:0; font-size:20px; letter-spacing:.5px }
+
+/* Dialog */
+.modal-title{ font-weight:800; margin-bottom:8px }
+.modal-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:12px }
 
 /* Utilities */
 .hidden{ display:none !important }
