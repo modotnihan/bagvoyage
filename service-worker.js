@@ -1,11 +1,12 @@
 // ===== Bagvoyage — service-worker.js =====
-const CACHE_VERSION = 'v1.1.9';
+const CACHE_VERSION = 'v1.2.0';
 const CACHE_NAME = `bagvoyage-${CACHE_VERSION}`;
 
 const PRECACHE = [
   './',
   './index.html',
   './style.css',
+  './app.js',
   './manifest.json',
   './img/bagvoyage-icon-32.png',
   './img/bagvoyage-icon-180.png',
