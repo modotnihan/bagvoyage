@@ -422,21 +422,13 @@ function tryAssemble(){
   }
 
   /* ---------- Continue flow (guarded) ---------- */
-  async function onContinue(e){
-    e?.preventDefault?.();
-    if (isContinuing) return;
-    isContinuing = true;
-    try{
-      hideSheet();
-      await stopCamera();         // ensure clean state (and torch off)
-      if (mode !== 'retrieve') mode = 'retrieve';
-      await startScan('retrieve'); // resume verify mode
-    }catch(err){
-      console.error('Continue failed', err);
-    }finally{
-      isContinuing = false;
-    }
-  }
+ async function onContinue(e){
+  e?.preventDefault?.();
+  hideSheet();            // close the match/unmatch popup
+  isScanning = false;     // make sure startScan will actually run
+  await startScan('retrieve');  // restart scanning immediately
+}
+
 
   /* ---------- Torch toggle ---------- */
   $torchBtn.addEventListener('click', async ()=>{
