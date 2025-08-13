@@ -421,12 +421,25 @@ function tryAssemble(){
     }
   }
 
-  /* ---------- Continue flow (guarded) ---------- */
- async function onContinue(e){
-  e?.preventDefault?.();
-  hideSheet();            // close the match/unmatch popup
-  isScanning = false;     // make sure startScan will actually run
-  await startScan('retrieve');  // restart scanning immediately
+ /* ---------- Continue flow (simple & robust) ---------- */
+async function onContinue(e){
+  if (e && e.preventDefault) e.preventDefault();
+
+  // Close the sheet first
+  hideSheet();
+
+  // Make sure any running detector loops are stopped (no-ops if not present)
+  try { if (window.__bagvoyage_native_running__) window.__bagvoyage_native_running__(); } catch {}
+  try { if (window.__bagvoyage_reader__ && window.__bagvoyage_reader__.reset) window.__bagvoyage_reader__.reset(); } catch {}
+
+  // Allow startScan to proceed
+  isScanning = false;
+
+  // Stay in retrieve mode
+  if (mode !== 'retrieve') mode = 'retrieve';
+
+  // Restart scanning immediately
+  await startScan('retrieve');
 }
 
 
