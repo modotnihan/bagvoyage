@@ -43,7 +43,7 @@ function tryAssemble(){
          (b.length===10 || b.length===13) ? b : '';
 }
 
-function init(){
+(function init(){
   if(window.__BAGVOYAGE_LOADED__){ console.warn('Bagvoyage already loaded.'); return; }
   window.__BAGVOYAGE_LOADED__ = true;
 
