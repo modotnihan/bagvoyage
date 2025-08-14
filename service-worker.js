@@ -1,5 +1,5 @@
 // ===== Bagvoyage — service-worker.js =====
-const CACHE_VERSION = 'v1.2.3';
+const CACHE_VERSION = 'v1.3.0';               // bumped for your new code
 const CACHE_NAME = `bagvoyage-${CACHE_VERSION}`;
 
 const PRECACHE = [
@@ -38,7 +38,6 @@ self.addEventListener('activate', event => {
 // - Others => cache-first (fallback to network)
 self.addEventListener('fetch', event => {
   const req = event.request;
-
   if (req.method !== 'GET') return;
 
   const accept = req.headers.get('accept') || '';
