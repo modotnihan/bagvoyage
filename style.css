@@ -1,4 +1,4 @@
-/* ===== Bagvoyage — style.css ===== */
+/* ===== Bagvoyage — style.css (unified UI) ===== */
 
 /* Safe area + color tokens */
 :root{
@@ -8,13 +8,17 @@
   --bg:#0b1220; --surface:#0f1b33; --card:#101a2e; --outline:#1f2a44;
   --text:#e7eefc; --muted:#9fb0d0;
   --primary:#1aa3ff; --ok:#00cc88; --bad:#ff4f5e;
+
+  --radius-lg:16px; --radius-md:12px; --radius-sm:10px;
+  --pad-lg:16px; --pad-md:12px; --pad-sm:10px;
+  --font: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 }
 
 *{ box-sizing:border-box }
 html,body{ height:100% }
 body{
   margin:0; background:var(--bg); color:var(--text);
-  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-family: var(--font);
   display:grid; place-items:center;
   overscroll-behavior: contain;
 }
@@ -26,7 +30,7 @@ body{
   display: flex; align-items: center; justify-content: center;
   transition: height 120ms ease;
   background: rgba(0,0,0,0.04);
-  font: 600 14px/1 Inter, system-ui, sans-serif;
+  font: 600 14px/1 var(--font);
   color: var(--muted);
   z-index: 10000;
 }
@@ -65,43 +69,61 @@ body{
 }
 .dot{ width:8px; height:8px; border-radius:999px; background:#9ca3af }
 .dot.ok{ background:var(--ok) }
-.btn.sm{ padding:8px 10px; border-radius:10px; font-size:13px }
+.btn.sm{ padding:8px 10px; border-radius:var(--radius-sm); font-size:13px; height:36px }
 
 /* Main panes */
 .main{ flex:1; display:grid; grid-template-columns:1fr; grid-template-rows:1fr }
 
-/* Setup screen */
-.setup{ display:grid; place-items:center; padding:24px 16px calc(24px + var(--safe-bottom)) }
+/* Cards & Shared UI */
 .card{
-  width:min(520px,92%); background:var(--surface);
-  border:1px solid var(--outline); border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:12px;
+  width:min(560px,92%); background:var(--surface);
+  border:1px solid var(--outline); border-radius:var(--radius-lg);
+  padding:var(--pad-lg); display:flex; flex-direction:column; gap:12px;
 }
 .card-title{ font-weight:800; font-size:18px; margin-bottom:4px }
 .row{ display:flex; flex-direction:column; gap:6px }
-.row.inline{ flex-direction:row; align-items:center; gap:10px }
+.row.split{ display:grid; grid-template-columns:1fr 1fr; gap:10px }
 .chk{ display:flex; align-items:center; gap:8px; font-size:14px; color:var(--muted) }
-.row label{ font-size:13px; color:var(--muted) }
-.row input{ padding:12px 12px; border-radius:12px; border:1px solid var(--outline); background:#0c1529; color:var(--text) }
-.actions{ display:flex; align-items:center; gap:10px }
-.actions .spacer{ flex:1 }
+.label-strong{ font-weight:700 }
+.muted{ color:var(--muted) }
+.small{ font-size:12px }
+
+/* Unified inputs */
+.input{
+  width:100%;
+  padding:12px;
+  border-radius:var(--radius-md);
+  border:1px solid var(--outline);
+  background:#0c1529; color:var(--text);
+  font: 600 14px/1 var(--font);
+}
+.input.sm{ padding:8px 10px; font-size:13px }
+
+/* Buttons */
+.btn{
+  appearance:none; border:0; border-radius:var(--radius-lg);
+  padding:16px 18px; font-weight:800; cursor:pointer; font-size:16px; height:48px;
+}
+.btn.primary{ background:var(--primary); color:#001421 }
+.btn.ghost{ background:transparent; color:var(--text); border:1px solid var(--outline) }
+.btn:active{ transform: translateY(1px) }
+.btn:focus-visible{ outline:2px solid var(--primary); outline-offset:2px }
+
+/* Unify scan buttons size */
+.scan-button { width:100%; }
 
 /* Session pill */
 .session-pill{
   border:1px dashed var(--outline); border-radius:999px; padding:8px 12px; color:var(--muted);
   font-size:12px; margin-bottom:10px; text-align:center;
 }
+.info-pair { display:flex; flex-direction:column; gap:4px; }
+.info-pair .label{ font-size:12px; color:var(--muted) }
+.info-pair .value{ font-weight:700 }
 
 /* Home screen */
 .home{ display:grid; place-items:center; padding:24px 16px calc(24px + var(--safe-bottom)) }
-.home .stack{ display:flex; flex-direction:column; gap:12px; width:min(420px,92%) }
-.btn{
-  appearance:none; border:0; border-radius:16px;
-  padding:16px 18px; font-weight:800; cursor:pointer; font-size:16px
-}
-.btn.primary{ background:var(--primary); color:#001421 }
-.btn.ghost{ background:transparent; color:var(--text); border:1px solid var(--outline) }
-.btn:active{ transform: translateY(1px) }
-.btn:focus-visible{ outline:2px solid var(--primary); outline-offset:2px }
+.home .stack{ display:flex; flex-direction:column; gap:12px; width:min(520px,92%) }
 
 /* Scanner view */
 .scan{
@@ -115,15 +137,18 @@ body{
 
 /* Top toolbar inside scan */
 .toolbar{
-  display:flex; gap:8px; padding:10px;
+  display:flex; align-items:center; gap:10px; padding:10px;
   border-bottom:1px solid var(--outline);
   background:linear-gradient(180deg,rgba(15,27,51,.9),rgba(15,27,51,.75));
   padding-top: calc(10px + var(--safe-top)/2);
   z-index:3;
 }
 .toolbar .title{ font-weight:800 }
+.toolbar .divider{ width:1px; height:22px; background:var(--outline); margin:0 4px }
 .toolbar .spacer{ flex:1 }
-.toolbar .btn{ padding:10px 12px; border-radius:12px }
+.toolbar-right{ display:flex; gap:8px; align-items:center }
+.client-wrap{ display:flex; align-items:center; gap:6px }
+.badge{ display:inline-flex; align-items:center; height:28px; padding:0 10px; border-radius:999px; background:var(--surface); border:1px solid var(--outline); font-size:12px; color:var(--muted) }
 
 /* Scan frame overlay */
 .frame{ pointer-events:none; z-index:2 }
@@ -195,35 +220,29 @@ body{
 #splash img{ width:72px; height:72px; display:block; margin:0 auto 12px }
 #splash h1{ margin:0; font-size:20px; letter-spacing:.5px }
 
-/* Dialogs / Details */
-.modal-title{ font-weight:800; margin-bottom:8px }
-.modal-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:12px }
+/* Dialogs */
+.modal{ display:flex; flex-direction:column; gap:10px; width:min(720px,92%) }
+.modal-title{ font-weight:800; font-size:18px }
+.modal-actions{ display:flex; gap:10px; justify-content:flex-end; margin-top:6px }
+
+/* Details */
 .details-form label{ font-size:13px; color:var(--muted) }
-.details-form input{ padding:10px 12px; border-radius:12px; border:1px solid var(--outline); background:#0c1529; color:var(--text) }
-.grid2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:6px }
-.table-wrap{ max-height:40vh; overflow:auto; border:1px solid var(--outline); border-radius:12px; }
+.table-wrap{ max-height:48vh; overflow:auto; border:1px solid var(--outline); border-radius:12px; }
 .table{ width:100%; border-collapse:collapse; font-size:14px }
 .table th, .table td{ border-bottom:1px solid var(--outline); padding:8px }
-.summary-counters{ display:grid; grid-template-columns:repeat(2,auto); gap:6px }
 
 /* Utilities */
 .hidden{ display:none !important }
 .sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;
 }
 
 /* Small screens */
 @media (max-width:360px){
   .hdr{ padding:10px 12px }
   .chip{ font-size:11px; padding:5px 8px }
-  .btn{ padding:14px 16px; font-size:15px; border-radius:14px }
+  .btn{ padding:14px 16px; font-size:15px; border-radius:14px; height:44px }
   .corn{ width:26px; height:26px; border-width:2px }
   .line{ left:14%; right:14% }
   .sheet{ padding:14px 14px calc(16px + var(--safe-bottom)) }
