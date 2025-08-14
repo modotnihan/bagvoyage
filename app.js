@@ -31,13 +31,7 @@ function todayISO(){
   const local = new Date(d.getTime() - z*60000);
   return local.toISOString().slice(0,10);
 }
-function makeSessionId(date, flight, client){
-  return `${date}|${(flight||'').trim().toUpperCase()}|${(client||'').trim()}`;
-}
-function tsFmt(ts){
-  const d = new Date(ts);
-  return d.toLocaleString();
-}
+function tsFmt(ts){ return new Date(ts).toLocaleString(); }
 
 /* ---------- Fragment combiner for split Code128 ---------- */
 const FRAG_WINDOW_MS = 1000;
@@ -73,44 +67,69 @@ function tryAssemble(){
   let useHardwareScanner = JSON.parse(localStorage.getItem('bagvoyage_hid') ?? 'null');
   if (useHardwareScanner === null) useHardwareScanner = isHoneywell();
 
-  // Session
-  let session = JSON.parse(localStorage.getItem('bagvoyage_session') || 'null');
-  // Data storage keys:
-  // - bagvoyage_sessions : [{id,date,flight,client}]
-  // - bagvoyage_data_<sessionId> : [{code,ts,type:'tag'|'retrieve', matched:boolean}]
-  const SESSIONS_KEY = 'bagvoyage_sessions';
+  // Session (date + flight; clients are per Tag scan)
+  // Storage:
+  // - bagvoyage_session : {date, flight}
+  // - bagvoyage_records_<date|flight> : [{code,ts,type,client}]
+  const session = JSON.parse(localStorage.getItem('bagvoyage_session') || 'null');
+  const SESSIONS_KEY = 'bagvoyage_sessions_v2'; // new index (date+flight)
 
-  // ---------- Local DB (session-scoped) ----------
+  function makeSessionId(date, flight){ return `${date}|${(flight||'').trim().toUpperCase()}`; }
+  function dataKeyById(id){ return `bagvoyage_records_${id}`; }
+
   function listSessions(){
     try { return JSON.parse(localStorage.getItem(SESSIONS_KEY)||'[]'); } catch { return []; }
   }
   function saveSessionMeta(meta){
     const all = listSessions().filter(x=>x.id!==meta.id);
     all.unshift(meta);
-    try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(all.slice(0,200))); }
+    try { localStorage.setItem(SESSIONS_KEY, JSON.stringify(all.slice(0,300))); }
     catch (e) { console.warn('Session meta save failed', e); }
   }
-  function dataKey(id){ return `bagvoyage_data_${id}`; }
-  function getData(id){
-    try { return JSON.parse(localStorage.getItem(dataKey(id))||'[]'); } catch { return []; }
+  function getDataById(id){
+    try { return JSON.parse(localStorage.getItem(dataKeyById(id))||'[]'); } catch { return []; }
   }
-  function setData(id, arr){
-    try { localStorage.setItem(dataKey(id), JSON.stringify(arr)); } catch(e){ console.warn('Storage failed', e); }
-  }
-  function addRecord(rec){
-    if (!session?.id) return;
-    const arr = getData(session.id);
-    arr.unshift(rec);
-    setData(session.id, arr.slice(0,2000));
-  }
-  function findTag(code){
-    if (!session?.id) return null;
-    const n = normalizeBaggageCode(code);
-    const arr = getData(session.id);
-    return arr.find(x=> x.type==='tag' && x.code===n) || null;
+  function setDataById(id, arr){
+    try { localStorage.setItem(dataKeyById(id), JSON.stringify(arr)); }
+    catch(e){ console.warn('Storage failed', e); }
   }
 
-  // ---------- DOM ----------
+  function addRecord(rec){
+    const s = getActiveSession();
+    if (!s) return;
+    const id = makeSessionId(s.date, s.flight);
+    const arr = getDataById(id);
+    arr.unshift(rec);
+    setDataById(id, arr.slice(0,5000));
+  }
+  function findTagAcrossClients(code){
+    const s = getActiveSession();
+    if (!s) return null;
+    const id = makeSessionId(s.date, s.flight);
+    const arr = getDataById(id);
+    const n = normalizeBaggageCode(code);
+    // Return the most recent tag for that code (if duplicates)
+    for (const rec of arr) {
+      if (rec.type==='tag' && rec.code===n) return rec; // rec has .client
+    }
+    return null;
+  }
+  function getActiveSession(){
+    try { return JSON.parse(localStorage.getItem('bagvoyage_session') || 'null'); }
+    catch { return null; }
+  }
+  function setActiveSession(date, flight){
+    const s = { date, flight: flight.toUpperCase() };
+    try { localStorage.setItem('bagvoyage_session', JSON.stringify(s)); }
+    catch (e) { console.warn('Session save failed', e); }
+    saveSessionMeta({ id: makeSessionId(date, flight), date, flight: s.flight });
+    return s;
+  }
+  function endSession(){
+    localStorage.removeItem('bagvoyage_session');
+  }
+
+  /* ---------- DOM ---------- */
   const $home = document.getElementById('home');
   const $scan = document.getElementById('scan');
   const $setup = document.getElementById('setup');
@@ -130,12 +149,30 @@ function tryAssemble(){
   const $manualDlg = document.getElementById('manualDialog');
   const $manualInput = document.getElementById('manualInput');
   const $savedTick = document.getElementById('savedTick');
-  const $scannerInput = document.getElementById('scannerInput'); // kept for compat (unused focus)
   const $ptr = document.getElementById('ptrIndicator');
   const $torchBtn = document.getElementById('btnTorch');
   const $hidBtn = document.getElementById('btnHID');
   const $btnDetails = document.getElementById('btnDetails');
   const $btnOpenDetails = document.getElementById('btnOpenDetails');
+  const $btnEndSession = document.getElementById('btnEndSession');
+
+  // Home pill bits
+  const $sessionPill = document.getElementById('sessionPill');
+  const $pillDate = document.getElementById('pillDate');
+  const $pillFlight = document.getElementById('pillFlight');
+
+  // Setup form
+  const $setupForm = document.getElementById('setupForm');
+  const $setupDate = document.getElementById('setupDate');
+  const $setupFlight = document.getElementById('setupFlight');
+  const $setupRemember = document.getElementById('setupRemember');
+
+  // Scan toolbar (client + flight badge)
+  const $clientWrap = document.getElementById('clientWrap');
+  const $tagClient = document.getElementById('tagClient');
+  const $flightBadge = document.getElementById('flightBadge');
+
+  // Details dialog
   const $detailsDlg = document.getElementById('detailsDialog');
   const $detailsDate = document.getElementById('detailsDate');
   const $detailsFlight = document.getElementById('detailsFlight');
@@ -145,19 +182,9 @@ function tryAssemble(){
   const $cntRetrieve = document.getElementById('cntRetrieve');
   const $cntMatched = document.getElementById('cntMatched');
   const $cntUnmatched = document.getElementById('cntUnmatched');
-  const $sessionPill = document.getElementById('sessionPill');
-
-  // Setup form
-  const $setupForm = document.getElementById('setupForm');
-  const $setupDate = document.getElementById('setupDate');
-  const $setupFlight = document.getElementById('setupFlight');
-  const $setupClient = document.getElementById('setupClient');
-  const $setupRemember = document.getElementById('setupRemember');
-  const $setupDetails = document.getElementById('setupDetails');
 
   // Status UI
   setTimeout(()=>{ $dbDot.className='dot ok'; $dbLabel.textContent='DB: online (local)'; }, 300);
-
   const vibrate = p => { try{ navigator.vibrate && navigator.vibrate(p) }catch{} };
   const toast = (msg, ms=900) => { $toast.textContent=msg; $toast.classList.add('show'); setTimeout(()=>$toast.classList.remove('show'), ms); };
 
@@ -325,7 +352,7 @@ function tryAssemble(){
     $pill.className = 'pill ' + (kind==='ok'?'ok':'bad');
     $pill.textContent = kind==='ok' ? 'MATCH' : 'UNMATCHED';
     $sheetTitle.textContent = title;
-    $sheetCode.textContent = code;
+    $sheetCode.innerHTML = code; // allow small HTML like <br>
 
     freshBtn.classList.toggle('hidden', !wait);
     freshBtn.setAttribute('tabindex', wait ? '0' : '-1');
@@ -334,9 +361,7 @@ function tryAssemble(){
     if (!wait) setTimeout(()=> $sheet.classList.remove('show'), 900);
     if (wait) freshBtn.focus();
   }
-  function hideSheet(){
-    $sheet.classList.remove('show');
-  }
+  function hideSheet(){ $sheet.classList.remove('show'); }
 
   /* ---------- UI helpers ---------- */
   function setCamStatus(active){
@@ -347,9 +372,19 @@ function tryAssemble(){
     $savedTick.classList.add('show');
     setTimeout(()=> $savedTick.classList.remove('show'), ms);
   }
-  function setSessionPill(){
-    if (!session) { $sessionPill.textContent = 'No session'; return; }
-    $sessionPill.textContent = `Session: ${session.date} • ${session.flight} • ${session.client}`;
+  function syncHomePill(){
+    const s = getActiveSession();
+    if (!s) {
+      $sessionPill.textContent = 'No session';
+      $pillDate.textContent = '—';
+      $pillFlight.textContent = '—';
+      $flightBadge.textContent = 'Flight —';
+      return;
+    }
+    $sessionPill.textContent = `Session: ${s.date} • ${s.flight}`;
+    $pillDate.textContent = s.date;
+    $pillFlight.textContent = s.flight;
+    $flightBadge.textContent = `Flight ${s.flight}`;
   }
   function showHome(){
     $scan.classList.add('hidden');
@@ -360,7 +395,7 @@ function tryAssemble(){
     $scan.classList.remove('active');
     hideSheet();
     disableHIDCapture();
-    setSessionPill();
+    syncHomePill();
   }
   function showScan(m){
     mode=m;
@@ -368,11 +403,9 @@ function tryAssemble(){
     $home.classList.add('hidden');
     $scan.classList.remove('hidden');
     $scan.classList.add('active');
-    if (useHardwareScanner) {
-      disableHIDCapture(); enableHIDCapture();
-    } else {
-      disableHIDCapture();
-    }
+    $clientWrap.classList.toggle('hidden', m!=='tag'); // only Tag shows client
+    if (useHardwareScanner) { disableHIDCapture(); enableHIDCapture(); } else { disableHIDCapture(); }
+    syncHomePill();
   }
   function showSetup(){
     $home.classList.add('hidden');
@@ -383,7 +416,8 @@ function tryAssemble(){
 
   /* ---------- Camera start/stop ---------- */
   async function startScan(m){
-    if (!session?.id) { toast('Please complete setup first'); showSetup(); return; }
+    const s = getActiveSession();
+    if (!s) { toast('Please complete setup first'); showSetup(); return; }
     if (isScanning) return;
     showScan(m);
 
@@ -418,7 +452,7 @@ function tryAssemble(){
       if (canUseNative) {
         let supported = [];
         try { supported = await BarcodeDetector.getSupportedFormats(); } catch {}
-        if (!Array.isArray(supported)) supported = []; // guard
+        if (!Array.isArray(supported)) supported = [];
 
         const wanted = ['code_128', 'itf', 'ean_13', 'ean_8', 'upc_a', 'qr_code'];
         const formats = wanted.filter(f => supported.includes(f));
@@ -517,10 +551,7 @@ function tryAssemble(){
     try { window.__bagvoyage_native_running__ && window.__bagvoyage_native_running__(); } catch {}
     try { window.__bagvoyage_reader__?.reset?.(); } catch {}
     const stream = $video.srcObject;
-    if (stream) {
-      const tracks = stream.getVideoTracks();
-      tracks.forEach(t => { try { t.stop(); } catch {} });
-    }
+    if (stream) { stream.getVideoTracks().forEach(t => { try { t.stop(); } catch {} }); }
     $video.pause();
     $video.srcObject = null;
     currentTrack = null;
@@ -535,9 +566,10 @@ function tryAssemble(){
     stopCamera();
   }
 
-  /* ---------- Scan handler (session-aware) ---------- */
+  /* ---------- Scan handler ---------- */
   async function onScan(text){
-    if (!session?.id) { toast('No active session'); return; }
+    const s = getActiveSession();
+    if (!s) { toast('No active session'); return; }
 
     const codeRaw = (text||'').trim();
     if(!codeRaw) return;
@@ -548,19 +580,20 @@ function tryAssemble(){
     const code = normalizeBaggageCode(codeRaw) || extractDigits(codeRaw) || codeRaw;
 
     if(mode==='tag'){
-      addRecord({ code, ts: now, type:'tag', matched:false });
-      vibrate(30);
-      showSavedTick();
-      toast('Tag saved', 700);
+      const client = ($tagClient.value || 'Unassigned').trim();
+      addRecord({ code, ts: now, type:'tag', client });
+      vibrate(30); showSavedTick(); toast(`Tag saved (${client})`, 700);
     }else if(mode==='retrieve'){
-      const matched = !!findTag(code);
-      addRecord({ code, ts: now, type:'retrieve', matched });
+      const tag = findTagAcrossClients(code); // match regardless of client
+      const matched = !!tag;
+      addRecord({ code, ts: now, type:'retrieve', matched, client: tag?.client || '' });
 
       if(matched){
         vibrate([40,60,40]);
         isScanning = false;
         await stopCamera();
-        openSheet('ok','MATCH',code,true);
+        const html = `${code}<br><span class="muted">Client: <b>${tag.client}</b></span>`;
+        openSheet('ok','MATCH',html,true);
       } else {
         vibrate([30,40,30]);
         openSheet('bad','UNMATCHED',code,false);
@@ -583,55 +616,36 @@ function tryAssemble(){
     await startScan('retrieve');
   }
 
-  /* ---------- Setup screen logic ---------- */
-  function startSession(date, flight, client){
-    session = { id: makeSessionId(date, flight, client), date, flight: flight.toUpperCase(), client };
-    try { localStorage.setItem('bagvoyage_session', JSON.stringify(session)); }
-    catch (e) { console.warn('Session save failed', e); }
-    saveSessionMeta(session);
+  /* ---------- Setup / Details ---------- */
+  function openDetails(prefill){
+    const s = getActiveSession();
+    $detailsDate.value = prefill?.date || s?.date || todayISO();
+    $detailsFlight.value = prefill?.flight || s?.flight || '';
+    $detailsClient.value = prefill?.client || '';
+    renderDetails({
+      date:$detailsDate.value, flight:$detailsFlight.value, client:$detailsClient.value
+    });
+    $detailsDlg.showModal();
   }
 
-  $setupForm.addEventListener('submit', (e)=>{
-    e.preventDefault();
-    const date = document.getElementById('setupDate').value || todayISO();
-    const flight = (document.getElementById('setupFlight').value||'').trim();
-    const client = (document.getElementById('setupClient').value||'').trim();
-    const remember = document.getElementById('setupRemember').checked;
-    if (!flight || !client) return;
-    startSession(date, flight, client);
-    if (!remember) {
-      // Ephemeral session: clear on pagehide
-      window.addEventListener('pagehide', ()=> localStorage.removeItem('bagvoyage_session'), { once:true });
-    }
-    toast('Session ready', 700);
-    showHome();
-  });
-
-  document.getElementById('setupDetails').addEventListener('click', ()=>{
-    // Pre-fill details dialog with setup values (unsaved yet)
-    const date = document.getElementById('setupDate').value || todayISO();
-    const flight = (document.getElementById('setupFlight').value||'').trim();
-    const client = (document.getElementById('setupClient').value||'').trim();
-    openDetails({ date, flight, client });
-  });
-
-  /* ---------- Details dialog ---------- */
   function loadRecords(filter){
-    const all = listSessions();
+    // collect ids by date+flight
+    const sessions = listSessions();
     let ids = [];
-    if (filter.date && filter.flight && filter.client) {
-      ids = [ makeSessionId(filter.date, filter.flight, filter.client) ];
+    if (filter.date && filter.flight) {
+      ids = [ makeSessionId(filter.date, filter.flight) ];
     } else {
-      ids = all
+      ids = sessions
         .filter(s =>
           (!filter.date   || s.date === filter.date) &&
-          (!filter.flight || s.flight.toUpperCase() === (filter.flight||'').trim().toUpperCase()) &&
-          (!filter.client || s.client === filter.client)
+          (!filter.flight || s.flight.toUpperCase() === (filter.flight||'').trim().toUpperCase())
         )
         .map(s=>s.id);
     }
     let recs = [];
-    ids.forEach(id => { recs = recs.concat(getData(id)); });
+    ids.forEach(id => { recs = recs.concat(getDataById(id)); });
+    // Optional client filter for display
+    if (filter.client) recs = recs.filter(r => (r.client||'').toLowerCase() === filter.client.toLowerCase());
     return recs.sort((a,b)=> b.ts - a.ts);
   }
 
@@ -643,7 +657,7 @@ function tryAssemble(){
       if (r.type==='tag') tag++;
       if (r.type==='retrieve') { ret++; r.matched ? mat++ : un++; }
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${tsFmt(r.ts)}</td><td>${r.code}</td><td>${r.type}</td><td>${r.type==='retrieve' ? (r.matched?'Yes':'No') : '-'}</td>`;
+      tr.innerHTML = `<td>${tsFmt(r.ts)}</td><td>${r.code}</td><td>${r.type}</td><td>${r.client||'-'}</td><td>${r.type==='retrieve' ? (r.matched?'Yes':'No') : '-'}</td>`;
       $detailsTbody.appendChild(tr);
     }
     $cntTag.textContent = String(tag);
@@ -652,36 +666,48 @@ function tryAssemble(){
     $cntUnmatched.textContent = String(un);
   }
 
-  function openDetails(prefill){
-    $detailsDate.value = prefill?.date || (session?.date || todayISO());
-    $detailsFlight.value = prefill?.flight || (session?.flight || '');
-    $detailsClient.value = prefill?.client || (session?.client || '');
-    renderDetails({ date:$detailsDate.value, flight:$detailsFlight.value, client:$detailsClient.value });
-    $detailsDlg.showModal();
-  }
+  // Setup form
+  $setupForm.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const date = $setupDate.value || todayISO();
+    const flight = ($setupFlight.value||'').trim();
+    if (!flight) return;
+    const remember = $setupRemember.checked;
+    setActiveSession(date, flight);
+    if (!remember) window.addEventListener('pagehide', ()=> localStorage.removeItem('bagvoyage_session'), { once:true });
+    toast('Session ready', 700);
+    showHome();
+  });
 
-  // Details events
+  // End session
+  $btnEndSession.addEventListener('click', ()=>{
+    endSession();
+    toast('Session ended', 700);
+    showSetup();
+  });
+
+  // Details controls
   $btnDetails.addEventListener('click', ()=> openDetails());
   $btnOpenDetails.addEventListener('click', ()=> openDetails());
   $detailsDate.addEventListener('change', ()=> renderDetails({ date:$detailsDate.value, flight:$detailsFlight.value, client:$detailsClient.value }));
   $detailsFlight.addEventListener('input', ()=> renderDetails({ date:$detailsDate.value, flight:$detailsFlight.value, client:$detailsClient.value }));
   $detailsClient.addEventListener('input', ()=> renderDetails({ date:$detailsDate.value, flight:$detailsFlight.value, client:$detailsClient.value }));
 
-  // Export CSV (with session-based filename)
+  // Export CSV
   document.getElementById('btnExport').addEventListener('click', ()=>{
     const recs = loadRecords({ date:$detailsDate.value, flight:$detailsFlight.value, client:$detailsClient.value });
-    const header = ['Timestamp','Code','Type','Matched'];
+    const header = ['Timestamp','Code','Type','Client','Matched'];
     const rows = recs.map(r=>[
       new Date(r.ts).toISOString(),
       r.code,
       r.type,
+      r.client||'',
       r.type==='retrieve' ? (r.matched?'Yes':'No') : ''
     ]);
     const csv = [header].concat(rows).map(r=>r.map(v=>String(v).replace(/"/g,'""')).map(v=>`"${v}"`).join(',')).join('\n');
     const blob = new Blob([csv], {type:'text/csv'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-
     const nameBits = [
       $detailsDate.value || 'all',
       ($detailsFlight.value||'').replace(/\s+/g,'_') || 'any',
@@ -691,10 +717,10 @@ function tryAssemble(){
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   });
 
-  // Print (popup-blocker safe)
+  // Print
   document.getElementById('btnPrint').addEventListener('click', ()=>{
     const win = window.open('', '_blank');
-    if (!win) { toast('Pop-up blocked. Allow pop-ups to print.'); return; } // guard
+    if (!win) { toast('Pop-up blocked. Allow pop-ups to print.'); return; }
     const title = `Bag details — ${$detailsDate.value || ''} ${$detailsFlight.value || ''} ${$detailsClient.value || ''}`.trim();
     win.document.write(`
       <html><head><title>${title}</title>
@@ -708,13 +734,11 @@ function tryAssemble(){
       </style></head><body>
       <h1>${title}</h1>
       <table>
-        <thead><tr><th>Time</th><th>Code</th><th>Type</th><th>Matched</th></tr></thead>
+        <thead><tr><th>Time</th><th>Code</th><th>Type</th><th>Client</th><th>Matched</th></tr></thead>
         <tbody>${$detailsTbody.innerHTML}</tbody>
       </table>
       </body></html>`);
-    win.document.close();
-    win.focus();
-    win.print();
+    win.document.close(); win.focus(); win.print();
   });
 
   /* ---------- Buttons ---------- */
@@ -722,28 +746,30 @@ function tryAssemble(){
     await stopScan();
     showHome();
   });
-
   document.getElementById('btnTag').addEventListener('click', ()=> startScan('tag'));
   document.getElementById('btnRetrieve').addEventListener('click', ()=> startScan('retrieve'));
 
+  // Manual entry
   document.getElementById('btnManual').addEventListener('click', ()=>{
-    $manualInput.value='';
-    $manualDlg.showModal();
+    $manualInput.value=''; document.getElementById('manualDialog').showModal();
   });
   document.getElementById('manualApply').addEventListener('click', (e)=>{
     e.preventDefault();
     const v = ($manualInput.value||'').trim();
     if(!v) return;
+    const code = normalizeBaggageCode(v)||v;
     if(!mode || mode==='tag'){
-      addRecord({ code: normalizeBaggageCode(v)||v, ts: Date.now(), type:'tag', matched:false });
-      showSavedTick(); toast('Tag saved', 700);
+      const client = ($tagClient.value || 'Unassigned').trim();
+      addRecord({ code, ts: Date.now(), type:'tag', client });
+      showSavedTick(); toast(`Tag saved (${client})`, 700);
     } else {
-      const code = normalizeBaggageCode(v)||v;
-      const matched = !!findTag(code);
-      addRecord({ code, ts:Date.now(), type:'retrieve', matched });
-      matched ? openSheet('ok','MATCH',code,true) : openSheet('bad','UNMATCHED',code,false);
+      const tag = findTagAcrossClients(code);
+      const matched = !!tag;
+      addRecord({ code, ts:Date.now(), type:'retrieve', matched, client: tag?.client || '' });
+      matched ? openSheet('ok','MATCH',`${code}<br><span class="muted">Client: <b>${tag.client}</b></span>`,true)
+              : openSheet('bad','UNMATCHED',code,false);
     }
-    $manualDlg.close();
+    document.getElementById('manualDialog').close();
     if (useHardwareScanner) { try{ document.activeElement && document.activeElement.blur && document.activeElement.blur(); }catch{} }
   });
 
@@ -784,14 +810,15 @@ function tryAssemble(){
         setCamStatus(false);
         updateTorchUI();
         try { document.activeElement && document.activeElement.blur && document.activeElement.blur(); } catch {}
-      } else if (!$scan.classList.contains('hidden')) { // only if scan screen is visible
+      } else if (!$scan.classList.contains('hidden')) {
         startScan(mode);
       }
     }
   });
 
-  // ---------- Init flow ----------
+  // ---------- Init ----------
   document.getElementById('setupDate').value = todayISO();
   $hidBtn.textContent = `Hardware Scanner: ${useHardwareScanner ? 'On' : 'Off'}`;
-  if (session?.id) showHome(); else showSetup();
+  const s0 = getActiveSession();
+  s0 ? showHome() : showSetup();
 })();
