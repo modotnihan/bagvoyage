@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en"> 
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport"
@@ -37,9 +37,16 @@
   <!-- Saved ✓ overlay -->
   <div id="savedTick" class="saved-tick" aria-hidden="true">✔</div>
 
-  <!-- Hidden input for HID barcode scanners (keyboard wedge) -->
-  <input id="scannerInput" autocomplete="off" inputmode="none" aria-hidden="true"
-         style="position:absolute;left:-9999px;opacity:0" />
+  <!-- Hidden input (kept for compatibility; we no longer focus it in HID mode) -->
+  <input id="scannerInput"
+         type="text"
+         autocomplete="off"
+         autocapitalize="off"
+         spellcheck="false"
+         tabindex="-1"
+         readonly
+         aria-hidden="true"
+         style="position:absolute;left:-9999px;opacity:0;width:1px;height:1px" />
 
   <div class="app" role="application" aria-label="Bagvoyage">
     <div class="hdr">
@@ -56,21 +63,63 @@
       <div class="right">
         <span class="chip"><span id="dbDot" class="dot"></span><span id="dbLabel">DB: checking…</span></span>
         <span class="chip"><span id="camDot" class="dot"></span><span id="camLabel">Camera: idle</span></span>
+        <button id="btnDetails" class="btn ghost sm" title="Open bag details">Details</button>
       </div>
     </div>
 
-    <div id="home" class="main home">
+    <!-- NEW: Setup screen -->
+    <div id="setup" class="main setup">
+      <form id="setupForm" class="card">
+        <div class="card-title">Pre-flight Setup</div>
+        <div class="row">
+          <label for="setupDate">Date</label>
+          <input id="setupDate" type="date" required />
+        </div>
+        <div class="row">
+          <label for="setupFlight">Flight number</label>
+          <input id="setupFlight" type="text" placeholder="e.g., MU235 / Q2 101" required />
+        </div>
+        <div class="row">
+          <label for="setupClient">Client</label>
+          <input id="setupClient" list="clientList" placeholder="e.g., VIP / VVIP / CIP / Airline" required />
+          <datalist id="clientList">
+            <option value="VIP"></option>
+            <option value="VVIP"></option>
+            <option value="CIP Standard"></option>
+            <option value="CIP Premium"></option>
+            <option value="Airline"></option>
+          </datalist>
+        </div>
+        <div class="row inline">
+          <label class="sr-only">Remember session</label>
+          <label class="chk"><input id="setupRemember" type="checkbox" checked /> Remember for today</label>
+        </div>
+        <div class="actions">
+          <button class="btn ghost" type="button" id="setupDetails">Bag details…</button>
+          <div class="spacer"></div>
+          <button class="btn primary" type="submit">Continue</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Home (scan mode chooser) -->
+    <div id="home" class="main home hidden">
       <div class="stack">
+        <div class="session-pill" id="sessionPill" title="Current session"></div>
         <button id="btnTag" class="btn primary">Tag — Start scanning</button>
         <button id="btnRetrieve" class="btn ghost">Retrieve — Scan to verify</button>
         <button id="btnManual" class="btn ghost">Manual entry</button>
+        <button id="btnOpenDetails" class="btn ghost">Bag details…</button>
       </div>
     </div>
 
+    <!-- Scan view -->
     <div id="scan" class="main scan hidden" aria-live="polite">
       <div class="toolbar">
         <div class="title" id="modeTitle">Mode</div>
         <div class="spacer"></div>
+        <!-- Hardware Scanner toggle -->
+        <button id="btnHID" class="btn ghost" title="Toggle hardware scanner (HID)">Hardware Scanner: Off</button>
         <button id="btnTorch" class="btn ghost" title="Toggle torch" aria-pressed="false" disabled>Torch</button>
         <button id="btnStop" class="btn ghost" title="Exit scanning">Exit</button>
       </div>
@@ -83,7 +132,7 @@
         <div class="line"></div>
       </div>
 
-      <!-- Result sheet (singleton) -->
+      <!-- Result sheet -->
       <div id="sheet" class="sheet" aria-atomic="true" role="alert">
         <div class="row">
           <span id="pill" class="pill">STATE</span>
@@ -93,12 +142,12 @@
         <div id="sheetCode" class="sheet-code" aria-live="polite"></div>
       </div>
 
-      <!-- toast (optional) -->
+      <!-- toast -->
       <div id="toast" class="toast" role="status" aria-live="polite">Saved</div>
     </div>
   </div>
 
-  <!-- Manual entry -->
+  <!-- Manual entry dialog -->
   <dialog id="manualDialog" aria-labelledby="manualTitle">
     <form method="dialog">
       <div id="manualTitle" class="modal-title">Manual entry</div>
@@ -108,6 +157,49 @@
       <div class="modal-actions">
         <button class="btn ghost" value="cancel">Cancel</button>
         <button id="manualApply" class="btn primary" value="ok">Apply</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- NEW: Bag details dialog -->
+  <dialog id="detailsDialog" aria-labelledby="detailsTitle">
+    <form method="dialog" class="details-form">
+      <div id="detailsTitle" class="modal-title">Bag details</div>
+      <div class="grid2">
+        <div>
+          <label for="detailsDate">Date</label>
+          <input id="detailsDate" type="date" />
+        </div>
+        <div>
+          <label for="detailsFlight">Flight</label>
+          <input id="detailsFlight" type="text" placeholder="Flight number" />
+        </div>
+      </div>
+      <div class="grid2">
+        <div>
+          <label for="detailsClient">Client</label>
+          <input id="detailsClient" list="clientList" placeholder="Client" />
+        </div>
+        <div class="summary-counters" aria-live="polite">
+          <div><strong>Total Tags:</strong> <span id="cntTag">0</span></div>
+          <div><strong>Retrieves:</strong> <span id="cntRetrieve">0</span></div>
+          <div><strong>Matched:</strong> <span id="cntMatched">0</span></div>
+          <div><strong>Unmatched:</strong> <span id="cntUnmatched">0</span></div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table" aria-label="Baggage scan records">
+          <thead><tr><th>Time</th><th>Code</th><th>Type</th><th>Match?</th></tr></thead>
+          <tbody id="detailsTbody"></tbody>
+        </table>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="btnExport" class="btn ghost">Export CSV</button>
+        <button type="button" id="btnPrint" class="btn ghost">Print</button>
+        <div class="spacer"></div>
+        <button class="btn primary" value="ok">Close</button>
       </div>
     </form>
   </dialog>
