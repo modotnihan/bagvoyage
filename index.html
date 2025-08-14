@@ -37,7 +37,7 @@
   <!-- Saved ✓ overlay -->
   <div id="savedTick" class="saved-tick" aria-hidden="true">✔</div>
 
-  <!-- Hidden input (kept for compatibility; we no longer focus it in HID mode) -->
+  <!-- Hidden input (kept for compatibility; no focus in HID mode) -->
   <input id="scannerInput"
          type="text"
          autocomplete="off"
@@ -51,7 +51,6 @@
   <div class="app" role="application" aria-label="Bagvoyage">
     <div class="hdr">
       <div class="brand">
-        <!-- Simple suitcase + check -->
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <title>Suitcase with checkmark</title>
           <rect x="5" y="7" width="14" height="12" rx="2" ry="2" fill="none" stroke="#1aa3ff" stroke-width="2"/>
@@ -64,24 +63,59 @@
         <span class="chip"><span id="dbDot" class="dot"></span><span id="dbLabel">DB: checking…</span></span>
         <span class="chip"><span id="camDot" class="dot"></span><span id="camLabel">Camera: idle</span></span>
         <button id="btnDetails" class="btn ghost sm" title="Open bag details">Details</button>
+        <button id="btnEndSession" class="btn ghost sm" title="End current session">End</button>
       </div>
     </div>
 
-    <!-- NEW: Setup screen -->
+    <!-- Setup screen -->
     <div id="setup" class="main setup">
       <form id="setupForm" class="card">
         <div class="card-title">Pre-flight Setup</div>
         <div class="row">
           <label for="setupDate">Date</label>
-          <input id="setupDate" type="date" required />
+          <input id="setupDate" class="input" type="date" required />
         </div>
         <div class="row">
           <label for="setupFlight">Flight number</label>
-          <input id="setupFlight" type="text" placeholder="e.g., MU235 / Q2 101" required />
+          <input id="setupFlight" class="input" type="text" placeholder="e.g., MU235 / Q2 101" required />
         </div>
-        <div class="row">
-          <label for="setupClient">Client</label>
-          <input id="setupClient" list="clientList" placeholder="e.g., VIP / VVIP / CIP / Airline" required />
+        <div class="actions">
+          <label class="chk">
+            <input id="setupRemember" type="checkbox" checked />
+            Remember this session on this device
+          </label>
+          <div class="spacer"></div>
+          <button class="btn primary" type="submit">Continue</button>
+        </div>
+        <div class="muted small">You can manage clients per bag in Tag mode.</div>
+      </form>
+    </div>
+
+    <!-- Home (scan mode chooser) -->
+    <div id="home" class="main home hidden">
+      <div class="stack">
+        <div class="session-pill" id="sessionPill" title="Current session"></div>
+        <div class="row split">
+          <div class="info-pair"><span class="label">Date</span><span id="pillDate" class="value">—</span></div>
+          <div class="info-pair"><span class="label">Flight</span><span id="pillFlight" class="value">—</span></div>
+        </div>
+        <button id="btnTag" class="btn scan-button primary">Tag — Start scanning</button>
+        <button id="btnRetrieve" class="btn scan-button ghost">Retrieve — Scan to verify</button>
+        <button id="btnManual" class="btn scan-button ghost">Manual entry</button>
+        <button id="btnOpenDetails" class="btn scan-button ghost">Bag details…</button>
+      </div>
+    </div>
+
+    <!-- Scan view -->
+    <div id="scan" class="main scan hidden" aria-live="polite">
+      <div class="toolbar">
+        <div class="title" id="modeTitle">Mode</div>
+        <div class="divider"></div>
+
+        <!-- Tag-only: client picker -->
+        <div id="clientWrap" class="client-wrap hidden" title="Client for Tag mode">
+          <label for="tagClient" class="sr-only">Client</label>
+          <input id="tagClient" class="input sm" list="clientList" placeholder="Client name" />
           <datalist id="clientList">
             <option value="VIP"></option>
             <option value="VVIP"></option>
@@ -90,42 +124,17 @@
             <option value="Airline"></option>
           </datalist>
         </div>
-        <div class="row inline">
-          <label class="sr-only">Remember session</label>
-          <label class="chk"><input id="setupRemember" type="checkbox" checked /> Remember for today</label>
-        </div>
-        <div class="actions">
-          <button class="btn ghost" type="button" id="setupDetails">Bag details…</button>
-          <div class="spacer"></div>
-          <button class="btn primary" type="submit">Continue</button>
-        </div>
-      </form>
-    </div>
 
-    <!-- Home (scan mode chooser) -->
-    <div id="home" class="main home hidden">
-      <div class="stack">
-        <div class="session-pill" id="sessionPill" title="Current session"></div>
-        <button id="btnTag" class="btn primary">Tag — Start scanning</button>
-        <button id="btnRetrieve" class="btn ghost">Retrieve — Scan to verify</button>
-        <button id="btnManual" class="btn ghost">Manual entry</button>
-        <button id="btnOpenDetails" class="btn ghost">Bag details…</button>
-      </div>
-    </div>
-
-    <!-- Scan view -->
-    <div id="scan" class="main scan hidden" aria-live="polite">
-      <div class="toolbar">
-        <div class="title" id="modeTitle">Mode</div>
         <div class="spacer"></div>
-        <!-- Hardware Scanner toggle -->
-        <button id="btnHID" class="btn ghost" title="Toggle hardware scanner (HID)">Hardware Scanner: Off</button>
-        <button id="btnTorch" class="btn ghost" title="Toggle torch" aria-pressed="false" disabled>Torch</button>
-        <button id="btnStop" class="btn ghost" title="Exit scanning">Exit</button>
+        <div class="toolbar-right">
+          <span id="flightBadge" class="badge">Flight —</span>
+          <button id="btnHID" class="btn ghost sm" title="Toggle hardware scanner (HID)">Hardware Scanner: Off</button>
+          <button id="btnTorch" class="btn ghost sm" title="Toggle torch" aria-pressed="false" disabled>Torch</button>
+          <button id="btnStop" class="btn ghost sm" title="Exit scanning">Exit</button>
+        </div>
       </div>
 
-      <video id="preview" muted playsinline webkit-playsinline
-             aria-label="Camera feed for barcode scanning"></video>
+      <video id="preview" muted playsinline webkit-playsinline aria-label="Camera feed for barcode scanning"></video>
 
       <div class="frame" aria-hidden="true">
         <div class="corn tl"></div><div class="corn tr"></div><div class="corn bl"></div><div class="corn br"></div>
@@ -149,11 +158,11 @@
 
   <!-- Manual entry dialog -->
   <dialog id="manualDialog" aria-labelledby="manualTitle">
-    <form method="dialog">
+    <form method="dialog" class="modal">
       <div id="manualTitle" class="modal-title">Manual entry</div>
-      <label for="manualInput" class="sr-only">Enter baggage code</label>
-      <input id="manualInput" type="text" placeholder="Enter code" aria-describedby="manualDesc"/>
-      <div id="manualDesc" class="sr-only">Enter a 10 or 13-digit baggage code.</div>
+      <label for="manualInput" class="label-strong">Baggage code</label>
+      <input id="manualInput" class="input" type="text" placeholder="Enter code" aria-describedby="manualDesc"/>
+      <div id="manualDesc" class="muted small">Enter a 10 or 13-digit baggage code.</div>
       <div class="modal-actions">
         <button class="btn ghost" value="cancel">Cancel</button>
         <button id="manualApply" class="btn primary" value="ok">Apply</button>
@@ -161,24 +170,26 @@
     </form>
   </dialog>
 
-  <!-- NEW: Bag details dialog -->
+  <!-- Bag details dialog -->
   <dialog id="detailsDialog" aria-labelledby="detailsTitle">
-    <form method="dialog" class="details-form">
+    <form method="dialog" class="modal">
       <div id="detailsTitle" class="modal-title">Bag details</div>
+
       <div class="grid2">
         <div>
           <label for="detailsDate">Date</label>
-          <input id="detailsDate" type="date" />
+          <input id="detailsDate" class="input" type="date" />
         </div>
         <div>
           <label for="detailsFlight">Flight</label>
-          <input id="detailsFlight" type="text" placeholder="Flight number" />
+          <input id="detailsFlight" class="input" type="text" placeholder="Flight number" />
         </div>
       </div>
+
       <div class="grid2">
         <div>
-          <label for="detailsClient">Client</label>
-          <input id="detailsClient" list="clientList" placeholder="Client" />
+          <label for="detailsClient">Client (optional)</label>
+          <input id="detailsClient" class="input" list="clientList" placeholder="Client" />
         </div>
         <div class="summary-counters" aria-live="polite">
           <div><strong>Total Tags:</strong> <span id="cntTag">0</span></div>
@@ -190,7 +201,7 @@
 
       <div class="table-wrap">
         <table class="table" aria-label="Baggage scan records">
-          <thead><tr><th>Time</th><th>Code</th><th>Type</th><th>Match?</th></tr></thead>
+          <thead><tr><th>Time</th><th>Code</th><th>Type</th><th>Client</th><th>Match?</th></tr></thead>
           <tbody id="detailsTbody"></tbody>
         </table>
       </div>
